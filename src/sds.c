@@ -52,7 +52,7 @@ sds sdsnewlen(const void *init, size_t initlen) {
     struct sdshdr *sh;
 
     if (init) {
-        sh = zmalloc(sizeof(struct sdshdr)+initlen+1);
+        sh = zmalloc(sizeof(struct sdshdr)+initlen+1);	/* 1:自动添加的'0',对外透明，故而这里需额外一个Byte空间 */
     } else {
         sh = zcalloc(sizeof(struct sdshdr)+initlen+1);
     }
@@ -61,7 +61,7 @@ sds sdsnewlen(const void *init, size_t initlen) {
     sh->free = 0;
     if (initlen && init)
         memcpy(sh->buf, init, initlen);
-    sh->buf[initlen] = '\0';
+    sh->buf[initlen] = '\0';	/* 必要操作 */
     return (char*)sh->buf;
 }
 
@@ -79,6 +79,7 @@ sds sdsnew(const char *init) {
 
 /* Duplicate an sds string. */
 sds sdsdup(const sds s) {
+	/* so easy */
     return sdsnewlen(s, sdslen(s));
 }
 
@@ -105,6 +106,7 @@ void sdsfree(sds s) {
 void sdsupdatelen(sds s) {
     struct sdshdr *sh = (void*) (s-(sizeof(struct sdshdr)));
     int reallen = strlen(s);
+	/* so easy */
     sh->free += (sh->len-reallen);
     sh->len = reallen;
 }
@@ -114,6 +116,7 @@ void sdsupdatelen(sds s) {
  * so that next append operations will not require allocations up to the
  * number of bytes previously available. */
 void sdsclear(sds s) {
+	/* so easy */
     struct sdshdr *sh = (void*) (s-(sizeof(struct sdshdr)));
     sh->free += sh->len;
     sh->len = 0;
@@ -125,7 +128,9 @@ void sdsclear(sds s) {
  * bytes after the end of the string, plus one more byte for nul term.
  *
  * Note: this does not change the *length* of the sds string as returned
- * by sdslen(), but only the free buffer space we have. */
+ * by sdslen(), but only the free buffer space we have. 
+ *
+ * 准备addlen长的free空间*/
 sds sdsMakeRoomFor(sds s, size_t addlen) {
     struct sdshdr *sh, *newsh;
     size_t free = sdsavail(s);
@@ -135,10 +140,14 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
     len = sdslen(s);
     sh = (void*) (s-(sizeof(struct sdshdr)));
     newlen = (len+addlen);
+	
+	/* 内存扩展策略 
+	 * 自定义buf的MEM扩展普遍思路 */
     if (newlen < SDS_MAX_PREALLOC)
         newlen *= 2;
     else
         newlen += SDS_MAX_PREALLOC;
+	
     newsh = zrealloc(sh, sizeof(struct sdshdr)+newlen+1);
     if (newsh == NULL) return NULL;
 
@@ -235,7 +244,8 @@ sds sdsgrowzero(sds s, size_t len) {
  * end of the specified sds string 's'.
  *
  * After the call, the passed sds string is no longer valid and all the
- * references must be substituted with the new pointer returned by the call. */
+ * references must be substituted with the new pointer returned by the call. 
+ * 注意上面的警告注释 */
 sds sdscatlen(sds s, const void *t, size_t len) {
     struct sdshdr *sh;
     size_t curlen = sdslen(s);
@@ -304,7 +314,8 @@ int sdsll2str(char *s, long long value) {
     size_t l;
 
     /* Generate the string representation, this method produces
-     * an reversed string. */
+     * an reversed string. 
+     * 思路是不是很简单 ^_^ */
     v = (value < 0) ? -value : value;
     p = s;
     do {
@@ -391,7 +402,7 @@ sds sdscatvprintf(sds s, const char *fmt, va_list ap) {
         va_copy(cpy,ap);
         vsnprintf(buf, buflen, fmt, cpy);
         va_end(cpy);
-        if (buf[buflen-2] != '\0') {
+        if (buf[buflen-2] != '\0') {	/* key: buflen-2 */
             if (buf != staticbuf) zfree(buf);
             buflen *= 2;
             buf = zmalloc(buflen);

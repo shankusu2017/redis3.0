@@ -31,6 +31,7 @@
 #ifndef __SDS_H
 #define __SDS_H
 
+/* sds内存增长时，决定行为策略的阈值，超过则线性增长，否则指数增长 */
 #define SDS_MAX_PREALLOC (1024*1024)
 
 #include <sys/types.h>
@@ -38,6 +39,12 @@
 
 typedef char *sds;
 
+/* context == "hello world"
+ * 
+ * len  = 11	
+ * free = 11	预分配和惰性释放，降低系统调用开销
+ * buf  = 'h'
+ * 自动在末尾添加'0',且对外透明 */
 struct sdshdr {
     unsigned int len;
     unsigned int free;
