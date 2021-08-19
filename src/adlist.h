@@ -40,11 +40,12 @@ typedef struct listNode {
 } listNode;
 
 typedef struct listIter {
-    listNode *next;
+    listNode *next;	/* next而非cur，看遍历函数就明白两者的区别了 */
     int direction;
 } listIter;
 
 typedef struct list {
+	/* 显示的head,tail指针，方便从双端快速插入 */
     listNode *head;
     listNode *tail;
     void *(*dup)(void *ptr);
@@ -61,6 +62,7 @@ typedef struct list {
 #define listNextNode(n) ((n)->next)
 #define listNodeValue(n) ((n)->value)
 
+/* 多态 */
 #define listSetDupMethod(l,m) ((l)->dup = (m))
 #define listSetFreeMethod(l,m) ((l)->free = (m))
 #define listSetMatchMethod(l,m) ((l)->match = (m))

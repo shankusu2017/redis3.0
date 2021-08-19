@@ -41,7 +41,7 @@
 list *listCreate(void)
 {
     struct list *list;
-
+	/* NULL判断是必须的 */
     if ((list = zmalloc(sizeof(*list))) == NULL)
         return NULL;
     list->head = list->tail = NULL;
@@ -64,8 +64,8 @@ void listRelease(list *list)
     len = list->len;
     while(len--) {
         next = current->next;
-        if (list->free) list->free(current->value);
-        zfree(current);
+        if (list->free) list->free(current->value);	/* 释放节点负载 */
+        zfree(current);	/* 释放节点本身 */
         current = next;
     }
     zfree(list);
@@ -84,6 +84,7 @@ list *listAddNodeHead(list *list, void *value)
     if ((node = zmalloc(sizeof(*node))) == NULL)
         return NULL;
     node->value = value;
+	/* 简单的双端链表的插入操作，so easy */
     if (list->len == 0) {
         list->head = list->tail = node;
         node->prev = node->next = NULL;
@@ -158,6 +159,7 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
  * This function can't fail. */
 void listDelNode(list *list, listNode *node)
 {
+	/* so easy */
     if (node->prev)
         node->prev->next = node->next;
     else
@@ -222,6 +224,7 @@ listNode *listNext(listIter *iter)
 {
     listNode *current = iter->next;
 
+	/* 知道为何iter中不是cur而是next了吧            */
     if (current != NULL) {
         if (iter->direction == AL_START_HEAD)
             iter->next = current->next;
@@ -313,6 +316,8 @@ listNode *listSearchKey(list *list, void *key)
 listNode *listIndex(list *list, long index) {
     listNode *n;
 
+	/* 1:head
+	 * -1:tail */
     if (index < 0) {
         index = (-index)-1;
         n = list->tail;
@@ -324,7 +329,8 @@ listNode *listIndex(list *list, long index) {
     return n;
 }
 
-/* Rotate the list removing the tail node and inserting it to the head. */
+/* Rotate the list removing the tail node and inserting it to the head. 
+ * 将tail从队列中摘除，并移至head */
 void listRotate(list *list) {
     listNode *tail = list->tail;
 
