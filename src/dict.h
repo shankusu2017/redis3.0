@@ -73,6 +73,7 @@ typedef struct dictht {
     unsigned long used;
 } dictht;
 
+/* 两个ht可以组成分步rehash功能是点睛之笔（避免大表一次性rehash卡住程序） */
 typedef struct dict {
     dictType *type;
     void *privdata;

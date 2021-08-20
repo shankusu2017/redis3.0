@@ -54,7 +54,8 @@
  *
  * Note that even when dict_can_resize is set to 0, not all resizes are
  * prevented: a hash table is still allowed to grow if the ratio between
- * the number of elements and the buckets > dict_force_resize_ratio. */
+ * the number of elements and the buckets > dict_force_resize_ratio. 
+ * 注释要仔细阅读 */
 static int dict_can_resize = 1;
 static unsigned int dict_force_resize_ratio = 5;
 
@@ -67,7 +68,8 @@ static int _dictInit(dict *ht, dictType *type, void *privDataPtr);
 
 /* -------------------------- hash functions -------------------------------- */
 
-/* Thomas Wang's 32 bit Mix Function */
+/* Thomas Wang's 32 bit Mix Function 
+ * 有个印象就好 */
 unsigned int dictIntHashFunction(unsigned int key)
 {
     key += ~(key << 15);
@@ -79,6 +81,7 @@ unsigned int dictIntHashFunction(unsigned int key)
     return key;
 }
 
+/* 5381只是一个数字，在测试中，造成的更少的碰撞和更好的雪崩 */
 static uint32_t dict_hash_function_seed = 5381;
 
 void dictSetHashFunctionSeed(uint32_t seed) {
@@ -99,6 +102,8 @@ uint32_t dictGetHashFunctionSeed(void) {
  * 1. It will not work incrementally.
  * 2. It will not produce the same results on little-endian and big-endian
  *    machines.
+ *
+ * 有个印象就好
  */
 unsigned int dictGenHashFunction(const void *key, int len) {
     /* 'm' and 'r' are mixing constants generated offline.
@@ -168,13 +173,15 @@ static void _dictReset(dictht *ht)
 dict *dictCreate(dictType *type,
         void *privDataPtr)
 {
+	/* sizeof(*d)相比sizeof(dict)更加灵活通用，且简洁 */
     dict *d = zmalloc(sizeof(*d));
 
     _dictInit(d,type,privDataPtr);
     return d;
 }
 
-/* Initialize the hash table */
+/* Initialize the hash table 
+ * 函数一定运行成功，返回值类型可以由int改为void */
 int _dictInit(dict *d, dictType *type,
         void *privDataPtr)
 {
@@ -243,6 +250,7 @@ int dictExpand(dict *d, unsigned long size)
  * will visit at max N*10 empty buckets in total, otherwise the amount of
  * work it does would be unbound and the function may block for a long time. */
 int dictRehash(dict *d, int n) {
+	/* 理解empty_visits的用意，蛮有意思的哈 */
     int empty_visits = n*10; /* Max number of empty buckets to visit. */
     if (!dictIsRehashing(d)) return 0;
 
@@ -252,9 +260,9 @@ int dictRehash(dict *d, int n) {
         /* Note that rehashidx can't overflow as we are sure there are more
          * elements because ht[0].used != 0 */
         assert(d->ht[0].size > (unsigned long)d->rehashidx);
-        while(d->ht[0].table[d->rehashidx] == NULL) {
+        while(d->ht[0].table[d->rehashidx] == NULL) {	/* 避免长时间空转 */
             d->rehashidx++;
-            if (--empty_visits == 0) return 1;
+            if (--empty_visits == 0) return 1;	
         }
         de = d->ht[0].table[d->rehashidx];
         /* Move all the keys in this bucket from the old to the new hash HT */
@@ -287,6 +295,7 @@ int dictRehash(dict *d, int n) {
     return 1;
 }
 
+/* 返回当前毫秒时间戳， 有印象就好 */
 long long timeInMilliseconds(void) {
     struct timeval tv;
 
@@ -321,6 +330,7 @@ static void _dictRehashStep(dict *d) {
 /* Add an element to the target hash table */
 int dictAdd(dict *d, void *key, void *val)
 {
+	/* 和lua中table[key]=val相似，这里也是先查找key对应的slot，后再填值 */
     dictEntry *entry = dictAddRaw(d,key);
 
     if (!entry) return DICT_ERR;
@@ -458,7 +468,7 @@ int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
     /* Free all the elements */
     for (i = 0; i < ht->size && ht->used > 0; i++) {
         dictEntry *he, *nextHe;
-
+		/* 不太明白65535的用意 */
         if (callback && (i & 65535) == 0) callback(d->privdata);
 
         if ((he = ht->table[i]) == NULL) continue;
@@ -519,7 +529,9 @@ void *dictFetchValue(dict *d, const void *key) {
  * When an unsafe iterator is initialized, we get the dict fingerprint, and check
  * the fingerprint again when the iterator is released.
  * If the two fingerprints are different it means that the user of the iterator
- * performed forbidden operations against the dictionary while iterating. */
+ * performed forbidden operations against the dictionary while iterating. 
+ *
+ * 这个函数创新指数很高 */
 long long dictFingerprint(dict *d) {
     long long integers[6], hash = 0;
     int j;
@@ -577,6 +589,7 @@ dictEntry *dictNext(dictIterator *iter)
     while (1) {
         if (iter->entry == NULL) {
             dictht *ht = &iter->d->ht[iter->table];
+			/* 此处的处理逻辑要印象 */
             if (iter->index == -1 && iter->table == 0) {
                 if (iter->safe)
                     iter->d->iterators++;
@@ -584,6 +597,7 @@ dictEntry *dictNext(dictIterator *iter)
                     iter->fingerprint = dictFingerprint(iter->d);
             }
             iter->index++;
+			/* 切ht操作，有印象就好 */
             if (iter->index >= (long) ht->size) {
                 if (dictIsRehashing(iter->d) && iter->table == 0) {
                     iter->table++;
@@ -619,7 +633,8 @@ void dictReleaseIterator(dictIterator *iter)
 }
 
 /* Return a random entry from the hash table. Useful to
- * implement randomized algorithms */
+ * implement randomized algorithms
+ * 要有个印象，两次random()是必须的，莫忘记第二次的random */
 dictEntry *dictGetRandomKey(dict *d)
 {
     dictEntry *he, *orighe;
