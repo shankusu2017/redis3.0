@@ -394,7 +394,7 @@ int anetRead(int fd, char *buf, int count)
     int nread, totlen = 0;
     while(totlen != count) {
         nread = read(fd,buf,count-totlen);
-        if (nread == 0) return totlen;
+        if (nread == 0) return totlen;	/* 对方已关闭，提前返回 */
         if (nread == -1) return -1;
         totlen += nread;
         buf += nread;
