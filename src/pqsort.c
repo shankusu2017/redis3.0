@@ -85,6 +85,7 @@ swapfunc(char *a, char *b, size_t n, int swaptype)
 
 #define vecswap(a, b, n) if ((n) > 0) swapfunc((a), (b), (size_t)(n), swaptype)
 
+/* 3个参数中的中间数 */
 static inline char *
 med3(char *a, char *b, char *c,
     int (*cmp) (const void *, const void *))
@@ -104,6 +105,7 @@ _pqsort(void *a, size_t n, size_t es,
 	int swaptype, cmp_result;
 
 loop:	SWAPINIT(a, es);
+	/* 数量少，直接插入排序 */
 	if (n < 7) {
 		for (pm = (char *) a + es; pm < (char *) a + n * es; pm += es)
 			for (pl = pm; pl > (char *) a && cmp(pl - es, pl) > 0;
@@ -111,6 +113,7 @@ loop:	SWAPINIT(a, es);
 				swap(pl, pl - es);
 		return;
 	}
+	/* 计算中值，避免arr[head],arr[tail] 这种随机情况 */
 	pm = (char *) a + (n / 2) * es;
 	if (n > 7) {
 		pl = (char *) a;
@@ -125,7 +128,7 @@ loop:	SWAPINIT(a, es);
 	}
 	swap(a, pm);
 	pa = pb = (char *) a + es;
-
+	/* 差不多的快排 */
 	pc = pd = (char *) a + (n - 1) * es;
 	for (;;) {
 		while (pb <= pc && (cmp_result = cmp(pb, a)) <= 0) {
@@ -154,6 +157,7 @@ loop:	SWAPINIT(a, es);
 	vecswap(a, pb - r, r);
 	r = min((size_t)(pd - pc), pn - pd - es);
 	vecswap(pb, pn - r, r);
+	/* 分治 */
 	if ((r = pb - pa) > es) {
                 void *_l = a, *_r = ((unsigned char*)a)+r-1;
                 if (!((lrange < _l && rrange < _l) ||
@@ -163,7 +167,8 @@ loop:	SWAPINIT(a, es);
 	if ((r = pd - pc) > es) {
                 void *_l, *_r;
 
-		/* Iterate rather than recurse to save stack space */
+		/* Iterate rather than recurse to save stack space 
+	     * 没有递归，处于结算栈空间的考虑，上面注释已经写明了 */
 		a = pn - r;
 		n = r / es;
 
