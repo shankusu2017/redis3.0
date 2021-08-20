@@ -292,7 +292,9 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
     eventLoop->lastTime = now;
 
     te = eventLoop->timeEventHead;
-    maxId = eventLoop->timeEventNextId-1;
+	/* 避免句柄中又触发事件，造成循环(尽快结束本次的time.event)
+	 * 而切换到下一次的事件处理周期中(首要目标是处理IO事件) */
+    maxId = eventLoop->timeEventNextId-1;	
     while(te) {
         long now_sec, now_ms;
         long long id;
@@ -348,7 +350,8 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
  * if flags has AE_DONT_WAIT set the function returns ASAP until all
  * the events that's possible to process without to wait are processed.
  *
- * The function returns the number of events processed. */
+ * The function returns the number of events processed. 
+ * 等待IO事件发生的同时，顺带也等待TIME事件，妙笔！ */
 int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 {
     int processed = 0, numevents;
