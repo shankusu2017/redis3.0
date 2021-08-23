@@ -67,6 +67,7 @@ int yesnotoi(char *s) {
 }
 
 void appendServerSaveParams(time_t seconds, int changes) {
+    /* 不预申请内存（简化逻辑），反正也不会浪费多少MEM */
     server.saveparams = zrealloc(server.saveparams,sizeof(struct saveparam)*(server.saveparamslen+1));
     server.saveparams[server.saveparamslen].seconds = seconds;
     server.saveparams[server.saveparamslen].changes = changes;
@@ -91,26 +92,28 @@ void loadServerConfigFromString(char *config) {
         sds *argv;
         int argc;
 
+		/* 分割行 */
         linenum = i+1;
         lines[i] = sdstrim(lines[i]," \t\r\n");
-
+		/* 忽略注释和空行 */
         /* Skip comments and blank lines */
         if (lines[i][0] == '#' || lines[i][0] == '\0') continue;
-
+		/* 解析一行的参数 */
         /* Split into arguments */
         argv = sdssplitargs(lines[i],&argc);
         if (argv == NULL) {
             err = "Unbalanced quotes in configuration line";
             goto loaderr;
         }
-
+		/* 忽略逻辑上的空行 */
         /* Skip this line if the resulting command vector is empty. */
         if (argc == 0) {
             sdsfreesplitres(argv,argc);
             continue;
         }
+		/* 配置名转为小写(忽略大小写) */
         sdstolower(argv[0]);
-
+		/* 下面大量的strcasecmp的调用：封装一层? */
         /* Execute config directives */
         if (!strcasecmp(argv[0],"timeout") && argc == 2) {
             server.maxidletime = atoi(argv[1]);
@@ -134,7 +137,7 @@ void loadServerConfigFromString(char *config) {
             }
         } else if (!strcasecmp(argv[0],"bind") && argc >= 2) {
             int j, addresses = argc-1;
-
+			/* 可绑定多个IP */
             if (addresses > REDIS_BINDADDR_MAX) {
                 err = "Too many bind addresses specified"; goto loaderr;
             }
@@ -161,6 +164,7 @@ void loadServerConfigFromString(char *config) {
                 resetServerSaveParams();
             }
         } else if (!strcasecmp(argv[0],"dir") && argc == 2) {
+        	/* 必须是目录 */
             if (chdir(argv[1]) == -1) {
                 redisLog(REDIS_WARNING,"Can't chdir to '%s': %s",
                     argv[1], strerror(errno));
@@ -218,6 +222,7 @@ void loadServerConfigFromString(char *config) {
                 err = "Invalid number of databases"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"include") && argc == 2) {
+        	/* 嵌套配置的设计思路 */
             loadServerConfig(argv[1],NULL);
         } else if (!strcasecmp(argv[0],"maxclients") && argc == 2) {
             server.maxclients = atoi(argv[1]);
