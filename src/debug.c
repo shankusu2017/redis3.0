@@ -469,7 +469,7 @@ void _redisPanic(char *msg, char *file, int line) {
     redisLog(REDIS_WARNING,"(forcing SIGSEGV in order to print the stack trace)");
 #endif
     redisLog(REDIS_WARNING,"------------------------------------------------");
-    *((char*)-1) = 'x';
+    *((char*)-1) = 'x';	/* 竟然这样来诱发异常，何不直接来个assert(0)调用 */
 }
 
 void bugReportStart(void) {
