@@ -1876,7 +1876,8 @@ void initServer(void) {
     if (server.cluster_enabled) clusterInit();
     replicationScriptCacheInit();
     scriptingInit();
-    slowlogInit();
+    slowlogInit();	/* 初始化慢日志模块 */
+	
     latencyMonitorInit();
     bioInit();
 }

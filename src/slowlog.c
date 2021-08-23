@@ -55,7 +55,8 @@ slowlogEntry *slowlogCreateEntry(robj **argv, int argc, long long duration) {
     for (j = 0; j < slargc; j++) {
         /* Logging too many arguments is a useless memory waste, so we stop
          * at SLOWLOG_ENTRY_MAX_ARGC, but use the last argument to specify
-         * how many remaining arguments there were in the original command. */
+         * how many remaining arguments there were in the original command. 
+         * 看上面的注释，是不是觉得作者考虑事情相当的仔细，这种边界情况下的tips都考虑进来了 */
         if (slargc != argc && j == slargc-1) {
             se->argv[j] = createObject(REDIS_STRING,
                 sdscatprintf(sdsempty(),"... (%d more arguments)",
@@ -111,8 +112,10 @@ void slowlogInit(void) {
  * configured max length. */
 void slowlogPushEntryIfNeeded(robj **argv, int argc, long long duration) {
     if (server.slowlog_log_slower_than < 0) return; /* Slowlog disabled */
-    if (duration >= server.slowlog_log_slower_than)
+    if (duration >= server.slowlog_log_slower_than) {
+		/* 这里的Head方向和下面返回最近N条log时的Head方向保持一致 */
         listAddNodeHead(server.slowlog,slowlogCreateEntry(argv,argc,duration));
+    }
 
     /* Remove old entries if needed. */
     while (listLength(server.slowlog) > server.slowlog_max_len)
@@ -126,7 +129,8 @@ void slowlogReset(void) {
 }
 
 /* The SLOWLOG command. Implements all the subcommands needed to handle the
- * Redis slow log. */
+ * Redis slow log. 
+ * 慢查询模块的命令实现接口 */
 void slowlogCommand(redisClient *c) {
     if (c->argc == 2 && !strcasecmp(c->argv[1]->ptr,"reset")) {
         slowlogReset();
@@ -148,7 +152,7 @@ void slowlogCommand(redisClient *c) {
 
         listRewind(server.slowlog,&li);
         totentries = addDeferredMultiBulkLength(c);
-        while(count-- && (ln = listNext(&li))) {
+        while(count-- && (ln = listNext(&li))) {	/* 两个参数都要判断 */
             int j;
 
             se = ln->value;
