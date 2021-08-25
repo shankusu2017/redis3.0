@@ -116,6 +116,7 @@ int zslRandomLevel(void) {
 
 /* 插一个node到跳表中 */
 zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
+	/* update,rank名字直接表明了其用途 */
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
     unsigned int rank[ZSKIPLIST_MAXLEVEL];
     int i, level;
@@ -188,14 +189,16 @@ void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update) {
             update[i]->level[i].span += x->level[i].span - 1;
             update[i]->level[i].forward = x->level[i].forward;
         } else {
-            update[i]->level[i].span -= 1;
+            update[i]->level[i].span -= 1;	// 同上面的update[i]->level[i].span++
         }
     }
+	// 更新tail链表
     if (x->level[0].forward) {
         x->level[0].forward->backward = x->backward;
     } else {
         zsl->tail = x->backward;
     }
+	// 回收空的level
     while(zsl->level > 1 && zsl->header->level[zsl->level-1].forward == NULL)
         zsl->level--;
     zsl->length--;
@@ -207,6 +210,7 @@ int zslDelete(zskiplist *zsl, double score, robj *obj) {
     int i;
 
     x = zsl->header;
+	/* 这里计算update的思路和zslInsert一致 */
     for (i = zsl->level-1; i >= 0; i--) {
         while (x->level[i].forward &&
             (x->level[i].forward->score < score ||
@@ -216,7 +220,8 @@ int zslDelete(zskiplist *zsl, double score, robj *obj) {
         update[i] = x;
     }
     /* We may have multiple elements with the same score, what we need
-     * is to find the element with both the right score and object. */
+     * is to find the element with both the right score and object. 
+     * 这里三个条件都需要满足 */
     x = x->level[0].forward;
     if (x && score == x->score && equalStringObjects(x->obj,obj)) {
         zslDeleteNode(zsl, x, update);
@@ -226,6 +231,7 @@ int zslDelete(zskiplist *zsl, double score, robj *obj) {
     return 0; /* not found */
 }
 
+// GteMin means > min
 static int zslValueGteMin(double value, zrangespec *spec) {
     return spec->minex ? (value > spec->min) : (value >= spec->min);
 }
@@ -260,6 +266,7 @@ zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range) {
     /* If everything is out of range, return early. */
     if (!zslIsInRange(zsl,range)) return NULL;
 
+	/* 先找到最靠近最小值的next->node */
     x = zsl->header;
     for (i = zsl->level-1; i >= 0; i--) {
         /* Go forward while *OUT* of range. */
@@ -272,7 +279,8 @@ zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range) {
     x = x->level[0].forward;
     redisAssert(x != NULL);
 
-    /* Check if score <= max. */
+    /* Check if score <= max. 
+	 * 再next，再Check(score <= max)，符合条件则被选择的就是FirstInRange的node*/
     if (!zslValueLteMax(x->score,range)) return NULL;
     return x;
 }
@@ -290,7 +298,7 @@ zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range) {
     for (i = zsl->level-1; i >= 0; i--) {
         /* Go forward while *IN* range. */
         while (x->level[i].forward &&
-            zslValueLteMax(x->level[i].forward->score,range))
+            zslValueLteMax(x->level[i].forward->score,range))	//条件和FirstInRange的相反，便选出最后一个符合条件的 */
                 x = x->level[i].forward;
     }
 
@@ -311,6 +319,7 @@ unsigned long zslDeleteRangeByScore(zskiplist *zsl, zrangespec *range, dict *dic
     unsigned long removed = 0;
     int i;
 
+	/* 选出受影响的左边的node列表 */
     x = zsl->header;
     for (i = zsl->level-1; i >= 0; i--) {
         while (x->level[i].forward && (range->minex ?
@@ -320,14 +329,15 @@ unsigned long zslDeleteRangeByScore(zskiplist *zsl, zrangespec *range, dict *dic
         update[i] = x;
     }
 
-    /* Current node is the last with score < or <= min. */
-    x = x->level[0].forward;
+    /* Current node is the last with score < or <= min. 
+	 * 再往后移一步，就"跨入"了<min,max>的范围 */
+    x = x->level[0].forward;	
 
     /* Delete nodes while in range. */
     while (x &&
            (range->maxex ? x->score < range->max : x->score <= range->max))
     {
-        zskiplistNode *next = x->level[0].forward;
+        zskiplistNode *next = x->level[0].forward;	/* 这里每次都是x->level[0],不变! */
         zslDeleteNode(zsl,x,update);
         dictDelete(dict,x->obj);
         zslFreeNode(x);

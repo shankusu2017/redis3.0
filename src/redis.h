@@ -1197,6 +1197,9 @@ unsigned long aofRewriteBufferSize(void);
 /* Struct to hold a inclusive/exclusive range spec by score comparison. */
 typedef struct {
     double min, max;
+	/* 上面的min,max是否是闭区间,eg:
+	 * min = 3, minex=0：> min即可，反之 >=min */
+	
     int minex, maxex; /* are min or max exclusive? */
 } zrangespec;
 
