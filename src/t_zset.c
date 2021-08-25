@@ -55,6 +55,7 @@
 static int zslLexValueGteMin(robj *value, zlexrangespec *spec);
 static int zslLexValueLteMax(robj *value, zlexrangespec *spec);
 
+// 构建一个指定参数的跳跃表节点
 zskiplistNode *zslCreateNode(int level, double score, robj *obj) {
     zskiplistNode *zn = zmalloc(sizeof(*zn)+level*sizeof(struct zskiplistLevel));
     zn->score = score;
@@ -62,6 +63,7 @@ zskiplistNode *zslCreateNode(int level, double score, robj *obj) {
     return zn;
 }
 
+// 构建一个跳跃表
 zskiplist *zslCreate(void) {
     int j;
     zskiplist *zsl;
@@ -69,21 +71,25 @@ zskiplist *zslCreate(void) {
     zsl = zmalloc(sizeof(*zsl));
     zsl->level = 1;
     zsl->length = 0;
+	
+	// 一次性构建好，避免后续不断的alloc
     zsl->header = zslCreateNode(ZSKIPLIST_MAXLEVEL,0,NULL);
     for (j = 0; j < ZSKIPLIST_MAXLEVEL; j++) {
-        zsl->header->level[j].forward = NULL;
-        zsl->header->level[j].span = 0;
+        zsl->header->level[j].forward = NULL;	// 前向指针
+        zsl->header->level[j].span = 0;			// 到下一个node的跨度
     }
+	
     zsl->header->backward = NULL;
     zsl->tail = NULL;
     return zsl;
 }
 
+// 删除一个跳跃表的节点
 void zslFreeNode(zskiplistNode *node) {
     decrRefCount(node->obj);
     zfree(node);
 }
-
+// 释放跳跃表
 void zslFree(zskiplist *zsl) {
     zskiplistNode *node = zsl->header->level[0].forward, *next;
 
@@ -99,7 +105,8 @@ void zslFree(zskiplist *zsl) {
 /* Returns a random level for the new skiplist node we are going to create.
  * The return value of this function is between 1 and ZSKIPLIST_MAXLEVEL
  * (both inclusive), with a powerlaw-alike distribution where higher
- * levels are less likely to be returned. */
+ * levels are less likely to be returned. 
+ * 随机决定层高 注释见：shankusu.me/redis/redis%E5%9F%BA%E7%A1%80%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84skiplist/#more */
 int zslRandomLevel(void) {
     int level = 1;
     while ((random()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
@@ -107,6 +114,7 @@ int zslRandomLevel(void) {
     return (level<ZSKIPLIST_MAXLEVEL) ? level : ZSKIPLIST_MAXLEVEL;
 }
 
+/* 插一个node到跳表中 */
 zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
     unsigned int rank[ZSKIPLIST_MAXLEVEL];
@@ -114,17 +122,21 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
 
     redisAssert(!isnan(score));
     x = zsl->header;
+	/* 计算出每一行受影响的左边的node(update)以及相关数据(rank) 
+	 * 函数的逻辑设计的非常简洁，值得学习 */
     for (i = zsl->level-1; i >= 0; i--) {
         /* store rank that is crossed to reach the insert position */
-        rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
+		/* 这里叠加上一层的rank的思想：妙！ */
+        rank[i] = (i == (zsl->level-1) ? 0 : rank[i+1]);
+		/* node从左边依次尝试往右边跳 */
         while (x->level[i].forward &&
             (x->level[i].forward->score < score ||
                 (x->level[i].forward->score == score &&
                 compareStringObjects(x->level[i].forward->obj,obj) < 0))) {
-            rank[i] += x->level[i].span;
-            x = x->level[i].forward;
+            rank[i] += x->level[i].span; 	/* 更新span */
+            x = x->level[i].forward;		/* 往右跳一次 */
         }
-        update[i] = x;
+        update[i] = x;	/* 记下每行受影响的左边的node */
     }
     /* we assume the key is not already inside, since we allow duplicated
      * scores, and the re-insertion of score and redis object should never
@@ -132,6 +144,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
      * if the element is already inside or not. */
     level = zslRandomLevel();
     if (level > zsl->level) {
+		/* 如果更新了跳表的高度，那么初始化新的高度所在行的信息 */
         for (i = zsl->level; i < level; i++) {
             rank[i] = 0;
             update[i] = zsl->header;
@@ -141,19 +154,23 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
     }
     x = zslCreateNode(level,score,obj);
     for (i = 0; i < level; i++) {
+		/* 插到本行链表 */
         x->level[i].forward = update[i]->level[i].forward;
         update[i]->level[i].forward = x;
 
-        /* update span covered by update[i] as x is inserted here */
+        /* update span covered by update[i] as x is inserted here 
+		 * 更新受影响的左边的node的span和新构建出来的node的span */
         x->level[i].span = update[i]->level[i].span - (rank[0] - rank[i]);
         update[i]->level[i].span = (rank[0] - rank[i]) + 1;
     }
 
-    /* increment span for untouched levels */
+    /* increment span for untouched levels 
+     * 这里画一下图就能明白，so easy */
     for (i = level; i < zsl->level; i++) {
         update[i]->level[i].span++;
     }
 
+	/* 更新tail链表 */
     x->backward = (update[0] == zsl->header) ? NULL : update[0];
     if (x->level[0].forward)
         x->level[0].forward->backward = x;
