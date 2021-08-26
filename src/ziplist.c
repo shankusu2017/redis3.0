@@ -7,6 +7,10 @@
  * amount of memory used by the ziplist.
  *
  * ----------------------------------------------------------------------------
+ * 看这篇文章前，可以先看《redis设计与实现》中相关的章节
+ *
+ *
+ * 结构体整体布局
  *
  * ZIPLIST OVERALL LAYOUT:
  * The general layout of the ziplist is as follows:
@@ -52,6 +56,7 @@
  *      String value with length less than or equal to 16383 bytes (14 bits).
  * |10______|qqqqqqqq|rrrrrrrr|ssssssss|tttttttt| - 5 bytes
  *      String value with length greater than or equal to 16384 bytes.
+ *
  * |11000000| - 1 byte
  *      Integer encoded as int16_t (2 bytes).
  * |11010000| - 1 byte
@@ -112,12 +117,16 @@
 #include "endianconv.h"
 #include "redisassert.h"
 
+/* TAIL.标志值 */
 #define ZIP_END 255
-#define ZIP_BIGLEN 254
+
+/* < 254，本Byte中的数值就是前一个node的长度
+ * = 254，前一个node的长度一个字节表示不了，真实的长度存在我后面的4字节MEM中 */
+#define ZIP_BIGLEN 254	
 
 /* Different encoding/length possibilities */
-#define ZIP_STR_MASK 0xc0
-#define ZIP_INT_MASK 0x30
+#define ZIP_STR_MASK 0xc0			/* 11000000 */
+#define ZIP_INT_MASK 0x30			/* 00110000 */
 #define ZIP_STR_06B (0 << 6)
 #define ZIP_STR_14B (1 << 6)
 #define ZIP_STR_32B (2 << 6)
@@ -125,17 +134,19 @@
 #define ZIP_INT_32B (0xc0 | 1<<4)
 #define ZIP_INT_64B (0xc0 | 2<<4)
 #define ZIP_INT_24B (0xc0 | 3<<4)
-#define ZIP_INT_8B 0xfe
+#define ZIP_INT_8B 0xfe				/*11111110 */
+
 /* 4 bit integer immediate encoding */
 #define ZIP_INT_IMM_MASK 0x0f
-#define ZIP_INT_IMM_MIN 0xf1    /* 11110001 */
-#define ZIP_INT_IMM_MAX 0xfd    /* 11111101 */
+#define ZIP_INT_IMM_MIN 0xf1    	/* 11110001 */
+#define ZIP_INT_IMM_MAX 0xfd   		/* 11111101 */
 #define ZIP_INT_IMM_VAL(v) (v & ZIP_INT_IMM_MASK)
 
 #define INT24_MAX 0x7fffff
 #define INT24_MIN (-INT24_MAX - 1)
 
-/* Macro to determine type */
+/* Macro to determine type 
+ * 这个宏有意思哈，没想到还有这种操作... */
 #define ZIP_IS_STR(enc) (((enc) & ZIP_STR_MASK) < ZIP_STR_MASK)
 
 /* Utility macros */
