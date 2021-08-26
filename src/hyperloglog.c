@@ -29,6 +29,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+
+/* 大致的算法原理参考 shankusu.me/algorithm/HyperLogLog%E7%AE%97%E6%B3%95%E8%AF%A6%E8%A7%A3/ */
 #include "redis.h"
 
 #include <stdint.h>
