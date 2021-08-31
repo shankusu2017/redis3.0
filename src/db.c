@@ -56,12 +56,12 @@ robj *lookupKey(redisDb *db, robj *key) {
         return NULL;
     }
 }
-
+/* 查找一个key-read的方式 */
 robj *lookupKeyRead(redisDb *db, robj *key) {
     robj *val;
 
     expireIfNeeded(db,key);
-    val = lookupKey(db,key);
+    val = lookupKey(db,key);	/* 若key存在则会更新lru */
     if (val == NULL)
         server.stat_keyspace_misses++;
     else
@@ -197,6 +197,8 @@ int dbDelete(redisDb *db, robj *key) {
  *
  * At this point the caller is ready to modify the object, for example
  * using an sdscat() call to append some data, or anything else.
+ *
+ * 函数的重点就在Unshare这个词上
  */
 robj *dbUnshareStringValue(redisDb *db, robj *key, robj *o) {
     redisAssert(o->type == REDIS_STRING);

@@ -368,7 +368,11 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
     }
 }
 
-/* Try to encode a string object in order to save space */
+/* Try to encode a string object in order to save space
+ * 将独享的str类型的数据替换成等值的更省内存的其他编码的obj后再返回
+ * 尝试将"123"换成int编码的obj,或者将"abcd"这种RAW编码换成更省内存的"EMBSTR"
+ * 总之一句话，能省内存就省
+ */
 robj *tryObjectEncoding(robj *o) {
     long value;
     sds s = o->ptr;

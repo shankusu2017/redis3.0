@@ -494,7 +494,7 @@ void addReplyLongLongWithPrefix(redisClient *c, long long ll, char prefix) {
     buf[len+2] = '\n';
     addReplyString(c,buf,len+3);
 }
-
+/* 返回一个longlong的值给client */
 void addReplyLongLong(redisClient *c, long long ll) {
     if (ll == 0)
         addReply(c,shared.czero);

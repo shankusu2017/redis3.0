@@ -496,6 +496,7 @@ void dictRelease(dict *d)
     zfree(d);
 }
 
+/* 默认的type dbDictType */
 dictEntry *dictFind(dict *d, const void *key)
 {
     dictEntry *he;

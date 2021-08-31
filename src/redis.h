@@ -189,7 +189,7 @@ typedef long long mstime_t; /* millisecond time type. */
  * internally represented in multiple ways. The 'encoding' field of the object
  * is set to one of this fields for this object. */
 #define REDIS_ENCODING_RAW 0     /* Raw representation, 简单动态字符串(sds) */
-#define REDIS_ENCODING_INT 1     /* Encoded as integer */
+#define REDIS_ENCODING_INT 1     /* Encoded as integer val="12"的情况下，直接用int编码val的值 */
 #define REDIS_ENCODING_HT 2      /* Encoded as hash table hash表 */
 #define REDIS_ENCODING_ZIPMAP 3  /* Encoded as zipmap */
 #define REDIS_ENCODING_LINKEDLIST 4 /* Encoded as regular linked list 双向列表 */
@@ -709,8 +709,11 @@ struct redisServer {
     long long stat_numconnections;  /* Number of connections received */
     long long stat_expiredkeys;     /* Number of expired keys */
     long long stat_evictedkeys;     /* Number of evicted keys (maxmemory) */
+
+	/* 命中和未命中的数量 */
     long long stat_keyspace_hits;   /* Number of successful lookups of keys */
     long long stat_keyspace_misses; /* Number of failed lookups of keys */
+	
     size_t stat_peak_memory;        /* Max used memory record */
     long long stat_fork_time;       /* Time needed to perform latest fork() */
     double stat_fork_rate;          /* Fork rate in GB/sec. */
@@ -1153,6 +1156,7 @@ int compareStringObjects(robj *a, robj *b);
 int collateStringObjects(robj *a, robj *b);
 int equalStringObjects(robj *a, robj *b);
 unsigned long long estimateObjectIdleTime(robj *o);
+/* RAW或EMBSTR编码的string吗? */
 #define sdsEncodedObject(objptr) (objptr->encoding == REDIS_ENCODING_RAW || objptr->encoding == REDIS_ENCODING_EMBSTR)
 
 /* Synchronous I/O with timeout */

@@ -168,7 +168,7 @@ void getsetCommand(redisClient *c) {
     notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"set",c->argv[1],c->db->id);
     server.dirty++;
 }
-
+/* setr key offset val */
 void setrangeCommand(redisClient *c) {
     robj *o;
     long offset;
@@ -234,11 +234,12 @@ void getrangeCommand(redisClient *c) {
     long long start, end;
     char *str, llbuf[32];
     size_t strlen;
-
+	/* 检查输入的范围索引是否正确 */
     if (getLongLongFromObjectOrReply(c,c->argv[2],&start,NULL) != REDIS_OK)
         return;
     if (getLongLongFromObjectOrReply(c,c->argv[3],&end,NULL) != REDIS_OK)
         return;
+	/* key是否存在，类型是否合法 */
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.emptybulk)) == NULL ||
         checkType(c,o,REDIS_STRING)) return;
 
@@ -287,6 +288,9 @@ void mgetCommand(redisClient *c) {
 void msetGenericCommand(redisClient *c, int nx) {
     int j, busykeys = 0;
 
+	/* mset key val
+	 *      key val ..
+	 * 所以这里c->argc%2==1才对 */
     if ((c->argc % 2) == 0) {
         addReplyError(c,"wrong number of arguments for MSET");
         return;
@@ -306,7 +310,7 @@ void msetGenericCommand(redisClient *c, int nx) {
     }
 
     for (j = 1; j < c->argc; j += 2) {
-        c->argv[j+1] = tryObjectEncoding(c->argv[j+1]);
+        c->argv[j+1] = tryObjectEncoding(c->argv[j+1]);	/* 尝试节省下内存 */
         setKey(c->db,c->argv[j],c->argv[j+1]);
         notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"set",c->argv[j],c->db->id);
     }
@@ -387,18 +391,18 @@ void incrbyfloatCommand(redisClient *c) {
     robj *o, *new, *aux;
 
     o = lookupKeyWrite(c->db,c->argv[1]);
-    if (o != NULL && checkType(c,o,REDIS_STRING)) return;
+    if (o != NULL && checkType(c,o,REDIS_STRING)) return;	/* 类型非法 */
     if (getLongDoubleFromObjectOrReply(c,o,&value,NULL) != REDIS_OK ||
         getLongDoubleFromObjectOrReply(c,c->argv[2],&incr,NULL) != REDIS_OK)
-        return;
+        return;	/* key对应的val无法转换为float或输入的参数无法转为float */
 
     value += incr;
     if (isnan(value) || isinf(value)) {
         addReplyError(c,"increment would produce NaN or Infinity");
         return;
     }
-    new = createStringObjectFromLongDouble(value,1);
-    if (o)
+    new = createStringObjectFromLongDouble(value,1);	/* 构建对应的str */
+    if (o)	/* 已存在就回写，不存在就新增 */
         dbOverwrite(c->db,c->argv[1],new);
     else
         dbAdd(c->db,c->argv[1],new);
@@ -443,14 +447,16 @@ void appendCommand(redisClient *c) {
         o->ptr = sdscatlen(o->ptr,append->ptr,sdslen(append->ptr));
         totlen = sdslen(o->ptr);
     }
+	/* 监视器，发布与订阅 */
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"append",c->argv[1],c->db->id);
     server.dirty++;
     addReplyLongLong(c,totlen);
 }
-
+/* 查找str的key对应val的长度 */
 void strlenCommand(redisClient *c) {
     robj *o;
+	/* 查找不到对应的key或key的类型不对，返回错误，中断后续流程 */
     if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
         checkType(c,o,REDIS_STRING)) return;
     addReplyLongLong(c,stringObjectLen(o));
