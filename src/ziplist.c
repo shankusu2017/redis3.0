@@ -29,6 +29,9 @@
  *      根据encoding的变化而变化
  *
  *
+ *  pre.len.size变化而诱发的连锁更新会占用CPU和增加内存碎片，
+ *  pre.len.size增加或降低理论上都可能会触发连锁,为了提高性能，在pre.len.size降低时不触发连锁更新(浪费点空间就当是预分配了)
+ *
  * <zlbytes> is an unsigned integer to hold the number of bytes that the
  * ziplist occupies. This value needs to be stored to be able to resize the
  * entire structure without the need to traverse it first.
@@ -626,15 +629,15 @@ static unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsig
     }
 
     totlen = p-first.p;
-    if (totlen > 0) {
+    if (totlen > 0) {	/* 被删除的Entry不是0 */
         if (p[0] != ZIP_END) {
             /* Storing `prevrawlen` in this entry may increase or decrease the
              * number of bytes required compare to the current `prevrawlen`.
              * There always is room to store this, because it was previously
              * stored by an entry that is now being deleted. */
             nextdiff = zipPrevLenByteDiff(p,first.prevrawlen);
-            p -= nextdiff;
-            zipPrevEncodeLength(p,first.prevrawlen);
+            p -= nextdiff;								/* p指向的Entry的pre.len.size改变了 */
+            zipPrevEncodeLength(p,first.prevrawlen);	/* 更新上面Entry.pre.len的内容 */
 
             /* Update offset for tail */
             ZIPLIST_TAIL_OFFSET(zl) =
@@ -665,7 +668,8 @@ static unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsig
         p = zl+offset;
 
         /* When nextdiff != 0, the raw length of the next entry has changed, so
-         * we need to cascade the update throughout the ziplist */
+         * we need to cascade the update throughout the ziplist 
+         * 后面Entry的处理和Insert函数中的逻辑是一致的 */
         if (nextdiff != 0)
             zl = __ziplistCascadeUpdate(zl,p);
     }
@@ -772,7 +776,7 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
         zipSaveInteger(p,value,encoding);
     }
 	
-	/* 更新Entry数量 */
+	/* 更新llen数量 */
     ZIPLIST_INCR_LENGTH(zl,1);	
     return zl;
 }
@@ -785,7 +789,8 @@ unsigned char *ziplistPush(unsigned char *zl, unsigned char *s, unsigned int sle
 
 /* Returns an offset to use for iterating with ziplistNext. When the given
  * index is negative, the list is traversed back to front. When the list
- * doesn't contain an element at the provided index, NULL is returned. */
+ * doesn't contain an element at the provided index, NULL is returned. 
+ * index和数组下标的对应关系：[1,2,3,4,5 ....... -3,-2,-1] 和lua中的stack中的index的含义是一样的 */
 unsigned char *ziplistIndex(unsigned char *zl, int index) {
     unsigned char *p;
     unsigned int prevlensize, prevlen = 0;
@@ -838,11 +843,12 @@ unsigned char *ziplistPrev(unsigned char *zl, unsigned char *p) {
 
     /* Iterating backwards from ZIP_END should return the tail. When "p" is
      * equal to the first element of the list, we're already at the head,
-     * and should return NULL. */
+     * and should return NULL. 
+     * 从ZIP_END开始迭代的话，确实应该返回TAIL */
     if (p[0] == ZIP_END) {
         p = ZIPLIST_ENTRY_TAIL(zl);
         return (p[0] == ZIP_END) ? NULL : p;
-    } else if (p == ZIPLIST_ENTRY_HEAD(zl)) {
+    } else if (p == ZIPLIST_ENTRY_HEAD(zl)) {	/* 到头了,不能再prev,故须返回NULL */
         return NULL;
     } else {
         ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);
@@ -991,16 +997,17 @@ unsigned char *ziplistFind(unsigned char *p, unsigned char *vstr, unsigned int v
 /* Return length of ziplist. */
 unsigned int ziplistLen(unsigned char *zl) {
     unsigned int len = 0;
-    if (intrev16ifbe(ZIPLIST_LENGTH(zl)) < UINT16_MAX) {
+    if (intrev16ifbe(ZIPLIST_LENGTH(zl)) < UINT16_MAX) {	/* 直接返回Entry数量即可 */
         len = intrev16ifbe(ZIPLIST_LENGTH(zl));
     } else {
         unsigned char *p = zl+ZIPLIST_HEADER_SIZE;
-        while (*p != ZIP_END) {
+        while (*p != ZIP_END) {	/* 一个一个遍历，直到遍历完整个ziplist */
             p += zipRawEntryLength(p);
             len++;
         }
 
-        /* Re-store length if small enough */
+        /* Re-store length if small enough 
+		 * 这里顺带更新是个妙笔 */
         if (len < UINT16_MAX) ZIPLIST_LENGTH(zl) = intrev16ifbe(len);
     }
     return len;
@@ -1010,6 +1017,8 @@ unsigned int ziplistLen(unsigned char *zl) {
 size_t ziplistBlobLen(unsigned char *zl) {
     return intrev32ifbe(ZIPLIST_BYTES(zl));
 }
+
+
 
 void ziplistRepr(unsigned char *zl) {
     unsigned char *p;
@@ -1063,10 +1072,6 @@ void ziplistRepr(unsigned char *zl) {
     }
     printf("{end}\n\n");
 }
-
-
-
-
 
 #ifdef ZIPLIST_TEST_MAIN
 #include <sys/time.h>

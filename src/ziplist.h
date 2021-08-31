@@ -31,16 +31,29 @@
 #define ZIPLIST_HEAD 0
 #define ZIPLIST_TAIL 1
 
+/* 构建全新的ziplist */
 unsigned char *ziplistNew(void);
+/* 从指定方向插入数据 */
 unsigned char *ziplistPush(unsigned char *zl, unsigned char *s, unsigned int slen, int where);
+/* 返回指定的Entry([1,2,3,4,...-4,-3,-2,-1]) */
 unsigned char *ziplistIndex(unsigned char *zl, int index);
+/* 返回next  .Entry */
 unsigned char *ziplistNext(unsigned char *zl, unsigned char *p);
+/* 返回prev.Entry */
 unsigned char *ziplistPrev(unsigned char *zl, unsigned char *p);
+/* 根据编码STRING/INT来提取指定的Entry的值p */
 unsigned int ziplistGet(unsigned char *p, unsigned char **sval, unsigned int *slen, long long *lval);
+/* 在指定位置插入数据 */
 unsigned char *ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char *s, unsigned int slen);
+/* 删除指定位置的Entry */
 unsigned char *ziplistDelete(unsigned char *zl, unsigned char **p);
+/*　从指定位置开始，删除N个Entry            */
 unsigned char *ziplistDeleteRange(unsigned char *zl, unsigned int index, unsigned int num);
+/*　对比　*/
 unsigned int ziplistCompare(unsigned char *p, unsigned char *s, unsigned int slen);
+/* 从p开始查找指定的Entry，若每次对比失败，则间隔skip个元素后再尝试下查找 */
 unsigned char *ziplistFind(unsigned char *p, unsigned char *vstr, unsigned int vlen, unsigned int skip);
+/* ziplist的元素总个数 */
 unsigned int ziplistLen(unsigned char *zl);
+/* ziplist占用的总BYTE数 */
 size_t ziplistBlobLen(unsigned char *zl);
