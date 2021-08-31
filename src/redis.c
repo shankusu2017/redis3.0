@@ -377,7 +377,8 @@ err:
     if (!log_to_stdout) close(fd);
 }
 
-/* Return the UNIX time in microseconds */
+/* Return the UNIX time in microseconds 
+ * 返回当前时间戳（微妙）*/
 long long ustime(void) {
     struct timeval tv;
     long long ust;
@@ -388,7 +389,8 @@ long long ustime(void) {
     return ust;
 }
 
-/* Return the UNIX time in milliseconds */
+/* Return the UNIX time in milliseconds 
+ * 返回当前时间戳（毫秒）*/
 long long mstime(void) {
     return ustime()/1000;
 }
@@ -870,9 +872,10 @@ void activeExpireCycle(int type) {
         } while (expired > ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP/4);
     }
 }
-
+/* 返回当前时间戳sec的低N位(bit) */
 unsigned int getLRUClock(void) {
-    return (mstime()/REDIS_LRU_CLOCK_RESOLUTION) & REDIS_LRU_CLOCK_MAX;
+	long long sec = (mstime()/REDIS_LRU_CLOCK_RESOLUTION)
+    return sec & REDIS_LRU_CLOCK_MAX;	/* 取低N bit位 */
 }
 
 /* Add a sample to the operations per second array of samples. */

@@ -176,7 +176,9 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_CMD_ASKING 4096               /* "k" flag */
 #define REDIS_CMD_FAST 8192                 /* "F" flag */
 
-/* Object types */
+/* Object types 
+ * decrRefCount() 函数给出了各种数据类型可能的编码方式
+*/
 #define REDIS_STRING 0
 #define REDIS_LIST 1
 #define REDIS_SET 2
@@ -186,15 +188,15 @@ typedef long long mstime_t; /* millisecond time type. */
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
  * is set to one of this fields for this object. */
-#define REDIS_ENCODING_RAW 0     /* Raw representation */
+#define REDIS_ENCODING_RAW 0     /* Raw representation, 简单动态字符串(sds) */
 #define REDIS_ENCODING_INT 1     /* Encoded as integer */
-#define REDIS_ENCODING_HT 2      /* Encoded as hash table */
+#define REDIS_ENCODING_HT 2      /* Encoded as hash table hash表 */
 #define REDIS_ENCODING_ZIPMAP 3  /* Encoded as zipmap */
-#define REDIS_ENCODING_LINKEDLIST 4 /* Encoded as regular linked list */
-#define REDIS_ENCODING_ZIPLIST 5 /* Encoded as ziplist */
-#define REDIS_ENCODING_INTSET 6  /* Encoded as intset */
-#define REDIS_ENCODING_SKIPLIST 7  /* Encoded as skiplist */
-#define REDIS_ENCODING_EMBSTR 8  /* Embedded sds string encoding */
+#define REDIS_ENCODING_LINKEDLIST 4 /* Encoded as regular linked list 双向列表 */
+#define REDIS_ENCODING_ZIPLIST 5 	/* Encoded as ziplist 压缩的双向列表 */
+#define REDIS_ENCODING_INTSET 6  	/* Encoded as intset intset集合 */
+#define REDIS_ENCODING_SKIPLIST 7   /* Encoded as skiplist skiplist和hash的组合 */
+#define REDIS_ENCODING_EMBSTR 8  	/* Embedded sds string encoding,嵌入式的str */
 
 /* Defines related to the dump file format. To store 32 bits lengths for short
  * keys requires a lot of space, so we check the most significant 2 bits of
@@ -409,10 +411,17 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_LRU_BITS 24
 #define REDIS_LRU_CLOCK_MAX ((1<<REDIS_LRU_BITS)-1) /* Max value of obj->lru */
 #define REDIS_LRU_CLOCK_RESOLUTION 1000 /* LRU clock resolution in ms */
+
+/* object 核心数据结构
+ * 一种数据类型(hash)可对应多种可能的编码方式(hash,ziplist)
+ * 一种编码方式(hash)可编码多种类型(hash,set) */
 typedef struct redisObject {
-    unsigned type:4;
+	/* 省内存的典范! */
+    unsigned type:4;		
     unsigned encoding:4;
-    unsigned lru:REDIS_LRU_BITS; /* lru time (relative to server.lruclock) */
+	 /* lru time (relative to server.lruclock), 单位：秒的低N(REDIS_LRU_BITS-24) bit位 */
+    unsigned lru:REDIS_LRU_BITS;
+	
     int refcount;
     void *ptr;
 } robj;
@@ -420,7 +429,8 @@ typedef struct redisObject {
 /* Macro used to obtain the current LRU clock.
  * If the current resolution is lower than the frequency we refresh the
  * LRU clock (as it should be in production servers) we return the
- * precomputed value, otherwise we need to resort to a function call. */
+ * precomputed value, otherwise we need to resort to a function call. 
+ * 这个函数的思路值得借鉴！若系统时钟更新的频率高，则直接读取最近的值，反之强制更新一次 */
 #define LRU_CLOCK() ((1000/server.hz <= REDIS_LRU_CLOCK_RESOLUTION) ? server.lruclock : getLRUClock())
 
 /* Macro used to initialize a Redis object allocated on the stack.
@@ -597,8 +607,8 @@ typedef struct zskiplist {
 } zskiplist;
 
 typedef struct zset {
-    dict *dict;
-    zskiplist *zsl;
+    dict *dict;		/* 方便快速查找 */
+    zskiplist *zsl;	/* 方便快速插入 */
 } zset;
 
 typedef struct clientBufferLimitsConfig {

@@ -26,6 +26,9 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ *
+ * 通读，代码量不大，逻辑也不复杂
  */
 
 #include "redis.h"
@@ -58,8 +61,10 @@ robj *createRawStringObject(char *ptr, size_t len) {
  * an object where the sds string is actually an unmodifiable string
  * allocated in the same chunk as the object itself. */
 robj *createEmbeddedStringObject(char *ptr, size_t len) {
+	/* 和上面的REDIS_ENCODING_RAW的object和sds的MEM是分开的,需要2次调用alloc函数不同
+	 * 这里是在一起的，进行一次系统调用即可 */
     robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr)+len+1);
-    struct sdshdr *sh = (void*)(o+1);
+    struct sdshdr *sh = (void*)(o+1);	/* 这里有意思吧 */
 
     o->type = REDIS_STRING;
     o->encoding = REDIS_ENCODING_EMBSTR;
@@ -83,7 +88,9 @@ robj *createEmbeddedStringObject(char *ptr, size_t len) {
  * used.
  *
  * The current limit of 39 is chosen so that the biggest string object
- * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
+ * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. 
+ *
+ * 39 = 64 - sizeof(object) - sizeof(sdshdr) - 1*/
 #define REDIS_ENCODING_EMBSTR_SIZE_LIMIT 39
 robj *createStringObject(char *ptr, size_t len) {
     if (len <= REDIS_ENCODING_EMBSTR_SIZE_LIMIT)
@@ -91,11 +98,12 @@ robj *createStringObject(char *ptr, size_t len) {
     else
         return createRawStringObject(ptr,len);
 }
-
+/* [0,1000] 内的数值直接反复共用的obj是亮点 */
 robj *createStringObjectFromLongLong(long long value) {
     robj *o;
     if (value >= 0 && value < REDIS_SHARED_INTEGERS) {
-        incrRefCount(shared.integers[value]);
+		/* 先给o赋值，再inceRefCount会减少一次索引定位操作 */
+        incrRefCount(shared.integers[value]);	
         o = shared.integers[value];
     } else {
         if (value >= LONG_MIN && value <= LONG_MAX) {
@@ -103,7 +111,7 @@ robj *createStringObjectFromLongLong(long long value) {
             o->encoding = REDIS_ENCODING_INT;
             o->ptr = (void*)((long)value);
         } else {
-            o = createObject(REDIS_STRING,sdsfromlonglong(value));
+            o = createObject(REDIS_STRING,sdsfromlonglong(value));	
         }
     }
     return o;
@@ -169,7 +177,7 @@ robj *dupStringObject(robj *o) {
         return createRawStringObject(o->ptr,sdslen(o->ptr));
     case REDIS_ENCODING_EMBSTR:
         return createEmbeddedStringObject(o->ptr,sdslen(o->ptr));
-    case REDIS_ENCODING_INT:
+    case REDIS_ENCODING_INT:	/* 根据上面的注释，这里需构建一个非共享的object出来, 对比createStringObjectFromLongLong方式中的共享的思路就明白了 */
         d = createObject(REDIS_STRING, NULL);
         d->encoding = REDIS_ENCODING_INT;
         d->ptr = o->ptr;
@@ -181,29 +189,29 @@ robj *dupStringObject(robj *o) {
 }
 
 robj *createListObject(void) {
-    list *l = listCreate();
+    list *l = listCreate(); 					/* 双向列表 */
     robj *o = createObject(REDIS_LIST,l);
     listSetFreeMethod(l,decrRefCountVoid);
-    o->encoding = REDIS_ENCODING_LINKEDLIST;
+    o->encoding = REDIS_ENCODING_LINKEDLIST;	/* 这里要和上面的listCreate一一对应，下同 */
     return o;
 }
 
 robj *createZiplistObject(void) {
-    unsigned char *zl = ziplistNew();
+    unsigned char *zl = ziplistNew();			/* 压缩的双向列表 */
     robj *o = createObject(REDIS_LIST,zl);
     o->encoding = REDIS_ENCODING_ZIPLIST;
     return o;
 }
 
 robj *createSetObject(void) {
-    dict *d = dictCreate(&setDictType,NULL);
+    dict *d = dictCreate(&setDictType,NULL);	/* 普通的hash表 */
     robj *o = createObject(REDIS_SET,d);
     o->encoding = REDIS_ENCODING_HT;
     return o;
 }
 
 robj *createIntsetObject(void) {
-    intset *is = intsetNew();
+    intset *is = intsetNew();					/* intset */
     robj *o = createObject(REDIS_SET,is);
     o->encoding = REDIS_ENCODING_INTSET;
     return o;
@@ -518,6 +526,7 @@ int collateStringObjects(robj *a, robj *b) {
  * this function is faster then checking for (compareStringObject(a,b) == 0)
  * because it can perform some more optimization. */
 int equalStringObjects(robj *a, robj *b) {
+	/* 提前判断下，能简单，快速判断a,b */
     if (a->encoding == REDIS_ENCODING_INT &&
         b->encoding == REDIS_ENCODING_INT){
         /* If both strings are integer encoded just check if the stored
@@ -688,12 +697,13 @@ char *strEncoding(int encoding) {
 }
 
 /* Given an object returns the min number of milliseconds the object was never
- * requested, using an approximated LRU algorithm. */
+ * requested, using an approximated LRU algorithm. estimate(预估) */
 unsigned long long estimateObjectIdleTime(robj *o) {
     unsigned long long lruclock = LRU_CLOCK();
     if (lruclock >= o->lru) {
         return (lruclock - o->lru) * REDIS_LRU_CLOCK_RESOLUTION;
     } else {
+    	/* 前提假设：仅回绕了一个周期 */
         return (lruclock + (REDIS_LRU_CLOCK_MAX - o->lru)) *
                     REDIS_LRU_CLOCK_RESOLUTION;
     }
@@ -715,7 +725,7 @@ robj *objectCommandLookupOrReply(redisClient *c, robj *key, robj *reply) {
     return o;
 }
 
-/* Object command allows to inspect the internals of an Redis Object.
+/* Object command allows to inspect(审查) the internals(组件) of an Redis Object.
  * Usage: OBJECT <refcount|encoding|idletime> <key> */
 void objectCommand(redisClient *c) {
     robj *o;
