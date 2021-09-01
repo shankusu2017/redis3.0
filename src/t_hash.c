@@ -25,6 +25,8 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ * 
+ * 数据量小或数据节点小时采用ziplist编码，否则采用hash编码
  */
 
 #include "redis.h"
@@ -36,7 +38,8 @@
 
 /* Check the length of a number of objects to see if we need to convert a
  * ziplist to a real hash. Note that we only check string encoded objects
- * as their string length can be queried in constant time. */
+ * as their string length can be queried in constant time. 
+ * 数据不再小时，从ziplist---->hash */
 void hashTypeTryConversion(robj *o, robj **argv, int start, int end) {
     int i;
 
@@ -52,7 +55,8 @@ void hashTypeTryConversion(robj *o, robj **argv, int start, int end) {
     }
 }
 
-/* Encode given objects in-place when the hash uses a dict. */
+/* Encode given objects in-place when the hash uses a dict.
+ * hash[filed] = val, 所以有o1, o2两个o(field, val) */
 void hashTypeTryObjectEncoding(robj *subject, robj **o1, robj **o2) {
     if (subject->encoding == REDIS_ENCODING_HT) {
         if (o1) *o1 = tryObjectEncoding(*o1);
@@ -61,7 +65,8 @@ void hashTypeTryObjectEncoding(robj *subject, robj **o1, robj **o2) {
 }
 
 /* Get the value from a ziplist encoded hash, identified by field.
- * Returns -1 when the field cannot be found. */
+ * Returns -1 when the field cannot be found.
+ * 尝试从ziplist编码的hash数据中查找指定field的值 */
 int hashTypeGetFromZiplist(robj *o, robj *field,
                            unsigned char **vstr,
                            unsigned int *vlen,
@@ -77,18 +82,19 @@ int hashTypeGetFromZiplist(robj *o, robj *field,
     zl = o->ptr;
     fptr = ziplistIndex(zl, ZIPLIST_HEAD);
     if (fptr != NULL) {
+		/*ziplist中以{k,v}的形式存放，所以在比对k不成功时需要跳过后面的v,继续比对下一个k直到成功为止 */
         fptr = ziplistFind(fptr, field->ptr, sdslen(field->ptr), 1);
         if (fptr != NULL) {
             /* Grab pointer to the value (fptr points to the field) */
-            vptr = ziplistNext(zl, fptr);
+            vptr = ziplistNext(zl, fptr);			/* 找到了k,往后跳一个，跳到对应的v */
             redisAssert(vptr != NULL);
         }
     }
 
     decrRefCount(field);
 
-    if (vptr != NULL) {
-        ret = ziplistGet(vptr, vstr, vlen, vll);
+    if (vptr != NULL) {	
+        ret = ziplistGet(vptr, vstr, vlen, vll);	/* 取出v的值 */
         redisAssert(ret);
         return 0;
     }
@@ -103,9 +109,9 @@ int hashTypeGetFromHashTable(robj *o, robj *field, robj **value) {
 
     redisAssert(o->encoding == REDIS_ENCODING_HT);
 
-    de = dictFind(o->ptr, field);
-    if (de == NULL) return -1;
-    *value = dictGetVal(de);
+    de = dictFind(o->ptr, field);	/* 先查表，找到field对应的val */
+    if (de == NULL) return -1;	
+    *value = dictGetVal(de);		/* 取出上述val赋值给value, incrRefCount的调用在上层逻辑处理 */
     return 0;
 }
 
@@ -114,7 +120,8 @@ int hashTypeGetFromHashTable(robj *o, robj *field, robj **value) {
  * can retain a reference or call decrRefCount after the usage.
  *
  * The lower level function can prevent copy on write so it is
- * the preferred way of doing read operations. */
+ * the preferred way of doing read operations. 
+ * 配合具体的Get函数来看，so easy */
 robj *hashTypeGetObject(robj *o, robj *field) {
     robj *value = NULL;
 
@@ -145,7 +152,8 @@ robj *hashTypeGetObject(robj *o, robj *field) {
 }
 
 /* Test if the specified field exists in the given hash. Returns 1 if the field
- * exists, and 0 when it doesn't. */
+ * exists, and 0 when it doesn't. 
+ * o的filed是否存在 */
 int hashTypeExists(robj *o, robj *field) {
     if (o->encoding == REDIS_ENCODING_ZIPLIST) {
         unsigned char *vstr = NULL;
@@ -166,7 +174,8 @@ int hashTypeExists(robj *o, robj *field) {
 /* Add an element, discard the old if the key already exists.
  * Return 0 on insert and 1 on update.
  * This function will take care of incrementing the reference count of the
- * retained fields and value objects. */
+ * retained fields and value objects.
+ * 设置o[field] = value, 旧值存在则替换，没有则直接设置 */
 int hashTypeSet(robj *o, robj *field, robj *value) {
     int update = 0;
 
@@ -199,11 +208,12 @@ int hashTypeSet(robj *o, robj *field, robj *value) {
             zl = ziplistPush(zl, field->ptr, sdslen(field->ptr), ZIPLIST_TAIL);
             zl = ziplistPush(zl, value->ptr, sdslen(value->ptr), ZIPLIST_TAIL);
         }
-        o->ptr = zl;
-        decrRefCount(field);
+        o->ptr = zl;			/* 这里别忘了 */
+        decrRefCount(field);	/* 这里需要减引用 */
         decrRefCount(value);
 
-        /* Check if the ziplist needs to be converted to a hash table */
+        /* Check if the ziplist needs to be converted to a hash table
+         * 这里再判断下value的长度就完美了 */
         if (hashTypeLength(o) > server.hash_max_ziplist_entries)
             hashTypeConvert(o, REDIS_ENCODING_HT);
     } else if (o->encoding == REDIS_ENCODING_HT) {
@@ -234,7 +244,8 @@ int hashTypeDelete(robj *o, robj *field) {
         if (fptr != NULL) {
             fptr = ziplistFind(fptr, field->ptr, sdslen(field->ptr), 1);
             if (fptr != NULL) {
-                zl = ziplistDelete(zl,&fptr);
+				/* {k,v}是连续存放的，且方向是从头到尾，所以下面连续调用两次删除即可 */
+                zl = ziplistDelete(zl,&fptr);	
                 zl = ziplistDelete(zl,&fptr);
                 o->ptr = zl;
                 deleted = 1;
@@ -299,7 +310,8 @@ void hashTypeReleaseIterator(hashTypeIterator *hi) {
 }
 
 /* Move to the next entry in the hash. Return REDIS_OK when the next entry
- * could be found and REDIS_ERR when the iterator reaches the end. */
+ * could be found and REDIS_ERR when the iterator reaches the end. 
+ * 仔细浏览一遍 so easy */
 int hashTypeNext(hashTypeIterator *hi) {
     if (hi->encoding == REDIS_ENCODING_ZIPLIST) {
         unsigned char *zl;
@@ -345,7 +357,7 @@ void hashTypeCurrentFromZiplist(hashTypeIterator *hi, int what,
     int ret;
 
     redisAssert(hi->encoding == REDIS_ENCODING_ZIPLIST);
-
+	/* 下面的函数可以合并下嘛！*/
     if (what & REDIS_HASH_KEY) {
         ret = ziplistGet(hi->fptr, vstr, vlen, vll);
         redisAssert(ret);
@@ -406,7 +418,7 @@ robj *hashTypeLookupWriteOrCreate(redisClient *c, robj *key) {
     }
     return o;
 }
-
+/* 将o的编码从ziplist---->hash */
 void hashTypeConvertZiplist(robj *o, int enc) {
     redisAssert(o->encoding == REDIS_ENCODING_ZIPLIST);
 
@@ -423,7 +435,7 @@ void hashTypeConvertZiplist(robj *o, int enc) {
 
         while (hashTypeNext(hi) != REDIS_ERR) {
             robj *field, *value;
-
+			/* 从ziplist一个一个挪到hash */
             field = hashTypeCurrentObject(hi, REDIS_HASH_KEY);
             field = tryObjectEncoding(field);
             value = hashTypeCurrentObject(hi, REDIS_HASH_VALUE);
@@ -439,7 +451,7 @@ void hashTypeConvertZiplist(robj *o, int enc) {
         hashTypeReleaseIterator(hi);
         zfree(o->ptr);
 
-        o->encoding = REDIS_ENCODING_HT;
+        o->encoding = REDIS_ENCODING_HT;	/* 切换编码，更新ptr */
         o->ptr = dict;
 
     } else {
@@ -466,6 +478,7 @@ void hsetCommand(redisClient *c) {
     robj *o;
 
     if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) return;
+	/* 尝试转转hash的编码类型和encode输入参数 */
     hashTypeTryConversion(o,c->argv,2,3);
     hashTypeTryObjectEncoding(o,&c->argv[2], &c->argv[3]);
     update = hashTypeSet(o,c->argv[2],c->argv[3]);
@@ -474,7 +487,7 @@ void hsetCommand(redisClient *c) {
     notifyKeyspaceEvent(REDIS_NOTIFY_HASH,"hset",c->argv[1],c->db->id);
     server.dirty++;
 }
-
+/* 大体同上，diff:不存在时才set */
 void hsetnxCommand(redisClient *c) {
     robj *o;
     if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) return;
@@ -495,7 +508,10 @@ void hsetnxCommand(redisClient *c) {
 void hmsetCommand(redisClient *c) {
     int i;
     robj *o;
-
+	/* hmset key 
+	 *  filed val
+	 *  filed val
+	 *  ... */
     if ((c->argc % 2) == 1) {
         addReplyError(c,"wrong number of arguments for HMSET");
         return;
@@ -546,7 +562,7 @@ void hincrbyCommand(redisClient *c) {
     notifyKeyspaceEvent(REDIS_NOTIFY_HASH,"hincrby",c->argv[1],c->db->id);
     server.dirty++;
 }
-
+/* 大体同上,只是long long->float */
 void hincrbyfloatCommand(redisClient *c) {
     double long value, incr;
     robj *o, *current, *new, *aux;
@@ -582,7 +598,7 @@ void hincrbyfloatCommand(redisClient *c) {
     rewriteClientCommandArgument(c,3,new);
     decrRefCount(new);
 }
-
+/* 返回 o[field]的val给c */
 static void addHashFieldToReply(redisClient *c, robj *o, robj *field) {
     int ret;
 
@@ -644,7 +660,7 @@ void hmgetCommand(redisClient *c) {
     }
 
     addReplyMultiBulkLen(c, c->argc-2);
-    for (i = 2; i < c->argc; i++) {
+    for (i = 2; i < c->argc; i++) {	/* 好家伙，直接一个循环... */
         addHashFieldToReply(c, o, c->argv[i]);
     }
 }
@@ -659,7 +675,7 @@ void hdelCommand(redisClient *c) {
     for (j = 2; j < c->argc; j++) {
         if (hashTypeDelete(o,c->argv[j])) {
             deleted++;
-            if (hashTypeLength(o) == 0) {
+            if (hashTypeLength(o) == 0) {	/* hash表都给删空了 */
                 dbDelete(c->db,c->argv[1]);
                 keyremoved = 1;
                 break;
@@ -708,7 +724,7 @@ static void addHashIteratorCursorToReply(redisClient *c, hashTypeIterator *hi, i
         redisPanic("Unknown hash encoding");
     }
 }
-
+/* 返回所有的k,或v或一起返回 */
 void genericHgetallCommand(redisClient *c, int flags) {
     robj *o;
     hashTypeIterator *hi;

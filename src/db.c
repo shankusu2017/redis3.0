@@ -421,7 +421,8 @@ int parseScanCursorOrReply(redisClient *c, robj *o, unsigned long *cursor) {
  * in order to parse options.
  *
  * In the case of a Hash object the function returns both the field and value
- * of every element on the Hash. */
+ * of every element on the Hash. 
+ * TODOREAD */
 void scanGenericCommand(redisClient *c, robj *o, unsigned long cursor) {
     int i, j;
     list *keys = listCreate();

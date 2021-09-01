@@ -993,9 +993,9 @@ typedef struct {
 typedef struct {
     robj *subject;
     int encoding;
-
+	/* for ziplist field.ptr  value.ptr */
     unsigned char *fptr, *vptr;
-
+	/* for hash */
     dictIterator *di;
     dictEntry *de;
 } hashTypeIterator;
