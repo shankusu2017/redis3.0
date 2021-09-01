@@ -790,7 +790,7 @@ unsigned char *ziplistPush(unsigned char *zl, unsigned char *s, unsigned int sle
 /* Returns an offset to use for iterating with ziplistNext. When the given
  * index is negative, the list is traversed back to front. When the list
  * doesn't contain an element at the provided index, NULL is returned. 
- * index和数组下标的对应关系：[1,2,3,4,5 ....... -3,-2,-1] 和lua中的stack中的index的含义是一样的 */
+ * index和数组下标的对应关系：[0,1,2,3,4,5 ....... -3,-2,-1] 和lua中的stack中的index的含义是一样的 */
 unsigned char *ziplistIndex(unsigned char *zl, int index) {
     unsigned char *p;
     unsigned int prevlensize, prevlen = 0;

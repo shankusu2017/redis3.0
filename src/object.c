@@ -391,7 +391,8 @@ robj *tryObjectEncoding(robj *o) {
 
     /* It's not safe to encode shared objects: shared objects can be shared
      * everywhere in the "object space" of Redis and may end in places where
-     * they are not handled. We handle them only as values in the keyspace. */
+     * they are not handled. We handle them only as values in the keyspace. 
+     * 另外，会共享的这里压缩也没有意义，因为其它地方还在保持引用! */
      if (o->refcount > 1) return o;
 
     /* Check if we can represent this string as a long integer.
@@ -489,6 +490,8 @@ int compareStringObjectsWithFlags(robj *a, robj *b, int flags) {
     size_t alen, blen, minlen;
 
     if (a == b) return 0;
+	/* 这里要考虑robj的编码即可能是常规的   REDIS_ENCODING_RAW，REDIS_ENCODING_EMBSTR
+	 * 也可能是压缩的：REDIS_ENCODING_INT         */
     if (sdsEncodedObject(a)) {
         astr = a->ptr;
         alen = sdslen(astr);

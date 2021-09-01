@@ -51,7 +51,7 @@ typedef struct list {
     void *(*dup)(void *ptr);
     void (*free)(void *ptr);
     int (*match)(void *ptr, void *key);
-    unsigned long len;
+    unsigned long len;	/* 元素数量 */
 } list;
 
 /* Functions implemented as macros */

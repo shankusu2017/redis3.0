@@ -316,7 +316,7 @@ listNode *listSearchKey(list *list, void *key)
 listNode *listIndex(list *list, long index) {
     listNode *n;
 
-	/* 1:head
+	/* 0:head
 	 * -1:tail */
     if (index < 0) {
         index = (-index)-1;

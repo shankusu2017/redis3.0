@@ -419,7 +419,8 @@ typedef struct redisObject {
 	/* 省内存的典范! */
     unsigned type:4;		
     unsigned encoding:4;
-	 /* lru time (relative to server.lruclock), 单位：秒的低N(REDIS_LRU_BITS-24) bit位 */
+	 /* lru time (relative to server.lruclock), 单位：秒的低N(REDIS_LRU_BITS-24) bit位 
+	  * 当前版本仅记录最近的访问时间戳，后续版本还记录了访问次数 */
     unsigned lru:REDIS_LRU_BITS;
 	
     int refcount;
@@ -492,9 +493,10 @@ typedef struct blockingState {
     mstime_t timeout;       /* Blocking operation timeout. If UNIX current time
                              * is > timeout then the operation timed out. */
 
-    /* REDIS_BLOCK_LIST */
+    /* REDIS_BLOCK_LIST, 客户端正阻塞在哪些key上 */
     dict *keys;             /* The keys we are waiting to terminate a blocking
                              * operation such as BLPOP. Otherwise NULL. */
+							 	
     robj *target;           /* The key that should receive the element,
                              * for BRPOPLPUSH. */
 
@@ -872,8 +874,8 @@ struct redisServer {
     /* Zip structure config, see redis.conf for more information  */
     size_t hash_max_ziplist_entries;
     size_t hash_max_ziplist_value;
-    size_t list_max_ziplist_entries;
-    size_t list_max_ziplist_value;
+    size_t list_max_ziplist_entries;	/* ziplist编码的list中node的最大数量，超过则换成linkedlist编码，下同 */
+    size_t list_max_ziplist_value;		/* ziplist编码的list中string的最大长度 */
     size_t set_max_intset_entries;
     size_t zset_max_ziplist_entries;
     size_t zset_max_ziplist_value;
@@ -962,10 +964,10 @@ typedef struct _redisSortOperation {
 
 /* Structure to hold list iteration abstraction. */
 typedef struct {
-    robj *subject;
-    unsigned char encoding;
+    robj *subject;			/* 被迭代的对象 */
+    unsigned char encoding;	/* 对象的编码 */
     unsigned char direction; /* Iteration direction */
-    unsigned char *zi;
+    unsigned char *zi;		 /* next zi或node */
     listNode *ln;
 } listTypeIterator;
 
