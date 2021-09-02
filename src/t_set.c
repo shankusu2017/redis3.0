@@ -25,6 +25,8 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
+ *
+ * 特点：唯一，无序
  */
 
 #include "redis.h"
@@ -39,7 +41,7 @@ void sunionDiffGenericCommand(redisClient *c, robj **setkeys, int setnum, robj *
  * an integer-encodable value, an intset will be returned. Otherwise a regular
  * hash table. */
 robj *setTypeCreate(robj *value) {
-    if (isObjectRepresentableAsLongLong(value,NULL) == REDIS_OK)
+    if (isObjectRepresentableAsLongLong(value,NULL) == REDIS_OK)	/* 优先intset */
         return createIntsetObject();
     return createSetObject();
 }
@@ -58,7 +60,7 @@ int setTypeAdd(robj *subject, robj *value) {
             if (success) {
                 /* Convert to regular set when the intset contains
                  * too many entries. */
-                if (intsetLen(subject->ptr) > server.set_max_intset_entries)
+                if (intsetLen(subject->ptr) > server.set_max_intset_entries)	/* 更换编码格式 */
                     setTypeConvert(subject,REDIS_ENCODING_HT);
                 return 1;
             }
@@ -69,7 +71,7 @@ int setTypeAdd(robj *subject, robj *value) {
             /* The set *was* an intset and this value is not integer
              * encodable, so dictAdd should always work. */
             redisAssertWithInfo(NULL,value,dictAdd(subject->ptr,value,NULL) == DICT_OK);
-            incrRefCount(value);
+            incrRefCount(value);	/* 这里别忘了 */
             return 1;
         }
     } else {
@@ -77,7 +79,7 @@ int setTypeAdd(robj *subject, robj *value) {
     }
     return 0;
 }
-
+/* val存在则返回1：反之返回 0 */
 int setTypeRemove(robj *setobj, robj *value) {
     long long llval;
     if (setobj->encoding == REDIS_ENCODING_HT) {
@@ -110,7 +112,7 @@ int setTypeIsMember(robj *subject, robj *value) {
     }
     return 0;
 }
-
+/* 根据不同的encoding来初始化迭代器 */
 setTypeIterator *setTypeInitIterator(robj *subject) {
     setTypeIterator *si = zmalloc(sizeof(setTypeIterator));
     si->subject = subject;
@@ -118,7 +120,7 @@ setTypeIterator *setTypeInitIterator(robj *subject) {
     if (si->encoding == REDIS_ENCODING_HT) {
         si->di = dictGetIterator(subject->ptr);
     } else if (si->encoding == REDIS_ENCODING_INTSET) {
-        si->ii = 0;
+        si->ii = 0;	/* 这里就是个简单的0, so simple */
     } else {
         redisPanic("Unknown set encoding");
     }
@@ -141,7 +143,8 @@ void setTypeReleaseIterator(setTypeIterator *si) {
  *
  * When there are no longer elements -1 is returned.
  * Returned objects ref count is not incremented, so this function is
- * copy on write friendly. */
+ * copy on write friendly. 
+ * 获取迭代器的"当前值", RETURNS:-1(失败) */
 int setTypeNext(setTypeIterator *si, robj **objele, int64_t *llele) {
     if (si->encoding == REDIS_ENCODING_HT) {
         dictEntry *de = dictNext(si->di);
@@ -160,7 +163,8 @@ int setTypeNext(setTypeIterator *si, robj **objele, int64_t *llele) {
  * retain a pointer to this object you should call decrRefCount() against it.
  *
  * This function is the way to go for write operations where COW is not
- * an issue as the result will be anyway of incrementing the ref count. */
+ * an issue as the result will be anyway of incrementing the ref count. 
+ * 返回迭代器的当前值，并封装成obj */
 robj *setTypeNextObject(setTypeIterator *si) {
     int64_t intele;
     robj *objele;
@@ -172,7 +176,7 @@ robj *setTypeNextObject(setTypeIterator *si) {
         case REDIS_ENCODING_INTSET:
             return createStringObjectFromLongLong(intele);
         case REDIS_ENCODING_HT:
-            incrRefCount(objele);
+            incrRefCount(objele);	/* 这里别忘了 */
             return objele;
         default:
             redisPanic("Unsupported encoding");
@@ -192,7 +196,8 @@ robj *setTypeNextObject(setTypeIterator *si) {
  *
  * When an object is returned (the set was a real set) the ref count
  * of the object is not incremented so this function can be considered
- * copy on write friendly. */
+ * copy on write friendly. 
+ * 返回一个随机值 so easy */
 int setTypeRandomElement(robj *setobj, robj **objele, int64_t *llele) {
     if (setobj->encoding == REDIS_ENCODING_HT) {
         dictEntry *de = dictGetRandomKey(setobj->ptr);
@@ -221,7 +226,7 @@ unsigned long setTypeSize(robj *subject) {
 void setTypeConvert(robj *setobj, int enc) {
     setTypeIterator *si;
     redisAssertWithInfo(NULL,setobj,setobj->type == REDIS_SET &&
-                             setobj->encoding == REDIS_ENCODING_INTSET);
+                             setobj->encoding == REDIS_ENCODING_INTSET);	/* HASH编码的就不用转了 */
 
     if (enc == REDIS_ENCODING_HT) {
         int64_t intele;
@@ -229,11 +234,11 @@ void setTypeConvert(robj *setobj, int enc) {
         robj *element;
 
         /* Presize the dict to avoid rehashing */
-        dictExpand(d,intsetLen(setobj->ptr));
+        dictExpand(d,intsetLen(setobj->ptr));			/* 一次性扩容到位，避免插入时触发扩容机制 */
 
         /* To add the elements we extract integers and create redis objects */
         si = setTypeInitIterator(setobj);
-        while (setTypeNext(si,NULL,&intele) != -1) {
+        while (setTypeNext(si,NULL,&intele) != -1) {	/* 逐个拷贝 */
             element = createStringObjectFromLongLong(intele);
             redisAssertWithInfo(NULL,element,dictAdd(d,element,NULL) == DICT_OK);
         }
@@ -301,7 +306,7 @@ void sremCommand(redisClient *c) {
     }
     addReplyLongLong(c,deleted);
 }
-
+/* 将srcset中的ele移到 dstset中 */
 void smoveCommand(redisClient *c) {
     robj *srcset, *dstset, *ele;
     srcset = lookupKeyWrite(c->db,c->argv[1]);
@@ -362,7 +367,7 @@ void sismemberCommand(redisClient *c) {
         checkType(c,set,REDIS_SET)) return;
 
     c->argv[2] = tryObjectEncoding(c->argv[2]);
-    if (setTypeIsMember(set,c->argv[2]))
+    if (setTypeIsMember(set,c->argv[2]))	/* 存在则返回1，反之返回0 */
         addReply(c,shared.cone);
     else
         addReply(c,shared.czero);
@@ -390,7 +395,7 @@ void spopCommand(redisClient *c) {
         ele = createStringObjectFromLongLong(llele);
         set->ptr = intsetRemove(set->ptr,llele,NULL);
     } else {
-        incrRefCount(ele);
+        incrRefCount(ele);		/* 先incRefCount后删除 */
         setTypeRemove(set,ele);
     }
     notifyKeyspaceEvent(REDIS_NOTIFY_SET,"spop",c->argv[1],c->db->id);
@@ -417,7 +422,8 @@ void spopCommand(redisClient *c) {
  * for us to don't use the "remove elements" strategy? Read later in the
  * implementation for more info. */
 #define SRANDMEMBER_SUB_STRATEGY_MUL 3
-
+/* 返回指定数量的随机元素
+ * 根据出入的参数来走不同的逻辑分支 */
 void srandmemberWithCountCommand(redisClient *c) {
     long l;
     unsigned long count, size;
@@ -574,7 +580,7 @@ void srandmemberCommand(redisClient *c) {
         addReplyBulk(c,ele);
     }
 }
-
+/* Cardinality(基数) */
 int qsortCompareSetsByCardinality(const void *s1, const void *s2) {
     return setTypeSize(*(robj**)s1)-setTypeSize(*(robj**)s2);
 }
@@ -639,7 +645,7 @@ void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, 
     /* Iterate all the elements of the first (smallest) set, and test
      * the element against all the other sets, if at least one set does
      * not include the element it is discarded */
-    si = setTypeInitIterator(sets[0]);
+    si = setTypeInitIterator(sets[0]);	/* 拿最少的set作为基础set，能减少不必要的key的对比 */
     while((encoding = setTypeNext(si,&eleobj,&intobj)) != -1) {
         for (j = 1; j < setnum; j++) {
             if (sets[j] == sets[0]) continue;
@@ -729,7 +735,7 @@ void sinterCommand(redisClient *c) {
 void sinterstoreCommand(redisClient *c) {
     sinterGenericCommand(c,c->argv+2,c->argc-2,c->argv[1]);
 }
-
+/* 两个set的交集，差异, ?*/
 #define REDIS_OP_UNION 0
 #define REDIS_OP_DIFF 1
 #define REDIS_OP_INTER 2

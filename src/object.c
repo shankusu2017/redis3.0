@@ -42,7 +42,7 @@
 robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
     o->type = type;
-    o->encoding = REDIS_ENCODING_RAW;
+    o->encoding = REDIS_ENCODING_RAW;	/* 上层函数根据实际情况再更新encoding */
     o->ptr = ptr;
     o->refcount = 1;
 
@@ -202,7 +202,7 @@ robj *createZiplistObject(void) {
     o->encoding = REDIS_ENCODING_ZIPLIST;
     return o;
 }
-
+/* set集合两种数据编码：ht和intset */
 robj *createSetObject(void) {
     dict *d = dictCreate(&setDictType,NULL);	/* 普通的hash表 */
     robj *o = createObject(REDIS_SET,d);
@@ -211,7 +211,7 @@ robj *createSetObject(void) {
 }
 
 robj *createIntsetObject(void) {
-    intset *is = intsetNew();					/* intset */
+    intset *is = intsetNew();					
     robj *o = createObject(REDIS_SET,is);
     o->encoding = REDIS_ENCODING_INTSET;
     return o;

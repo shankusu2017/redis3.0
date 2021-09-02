@@ -978,7 +978,8 @@ typedef struct {
     listNode *ln;       /* Entry in linked list */
 } listTypeEntry;
 
-/* Structure to hold set iteration abstraction. */
+/* Structure to hold set iteration abstraction.
+ * set数据类型的迭代器 */
 typedef struct {
     robj *subject;
     int encoding;

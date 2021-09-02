@@ -327,13 +327,14 @@ static void _dictRehashStep(dict *d) {
     if (d->iterators == 0) dictRehash(d,1);
 }
 
-/* Add an element to the target hash table */
+/* Add an element to the target hash table 
+ * 作为set的编码格式来用时，val会是NULL */
 int dictAdd(dict *d, void *key, void *val)
 {
 	/* 和lua中table[key]=val相似，这里也是先查找key对应的slot，后再填值 */
     dictEntry *entry = dictAddRaw(d,key);
 
-    if (!entry) return DICT_ERR;
+    if (!entry) return DICT_ERR;	/* key对应的Node已存在 */
     dictSetVal(d, entry, val);
     return DICT_OK;
 }
@@ -352,6 +353,7 @@ int dictAdd(dict *d, void *key, void *val)
  *
  * If key already exists NULL is returned.
  * If key was added, the hash entry is returned to be manipulated by the caller.
+ * key对应的node已存在，则返回NULL */
  */
 dictEntry *dictAddRaw(dict *d, void *key)
 {
@@ -364,7 +366,7 @@ dictEntry *dictAddRaw(dict *d, void *key)
     /* Get the index of the new element, or -1 if
      * the element already exists. */
     if ((index = _dictKeyIndex(d, key)) == -1)
-        return NULL;
+        return NULL;	/* key对应的node已存在，则返回NULL */
 
     /* Allocate the memory and store the new entry */
     ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];
@@ -415,7 +417,8 @@ dictEntry *dictReplaceRaw(dict *d, void *key) {
     return entry ? entry : dictAddRaw(d,key);
 }
 
-/* Search and remove an element */
+/* Search and remove an element
+ * key存在则返回DICT_OK，反之返回DICT_ERR */
 static int dictGenericDelete(dict *d, const void *key, int nofree)
 {
     unsigned int h, idx;
