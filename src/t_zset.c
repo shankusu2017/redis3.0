@@ -240,7 +240,8 @@ static int zslValueLteMax(double value, zrangespec *spec) {
     return spec->maxex ? (value < spec->max) : (value <= spec->max);
 }
 
-/* Returns if there is a part of the zset is in range. */
+/* Returns if there is a part of the zset is in range. 
+ * ziplist的内的值是否和range的有交集 */
 int zslIsInRange(zskiplist *zsl, zrangespec *range) {
     zskiplistNode *x;
 
@@ -607,7 +608,8 @@ int zslIsInLexRange(zskiplist *zsl, zlexrangespec *range) {
 }
 
 /* Find the first node that is contained in the specified lex range.
- * Returns NULL when no element is contained in the range. */
+ * Returns NULL when no element is contained in the range.
+ * 和上面的zslFirstInRange思路差不多 */
 zskiplistNode *zslFirstInLexRange(zskiplist *zsl, zlexrangespec *range) {
     zskiplistNode *x;
     int i;
@@ -660,7 +662,7 @@ zskiplistNode *zslLastInLexRange(zskiplist *zsl, zlexrangespec *range) {
 /*-----------------------------------------------------------------------------
  * Ziplist-backed sorted set API
  *----------------------------------------------------------------------------*/
-
+/* 提取ziplist中的值 */
 double zzlGetScore(unsigned char *sptr) {
     unsigned char *vstr;
     unsigned int vlen;
@@ -720,13 +722,14 @@ int zzlCompareElements(unsigned char *eptr, unsigned char *cstr, unsigned int cl
     if (cmp == 0) return vlen-clen;
     return cmp;
 }
-
+/* 这里看的出ziplist中存储一个item是分为了两部分{field, score} */
 unsigned int zzlLength(unsigned char *zl) {
     return ziplistLen(zl)/2;
 }
 
 /* Move to next entry based on the values in eptr and sptr. Both are set to
- * NULL when there is no next entry. */
+ * NULL when there is no next entry.
+ * 下一组{field, score}*/
 void zzlNext(unsigned char *zl, unsigned char **eptr, unsigned char **sptr) {
     unsigned char *_eptr, *_sptr;
     redisAssert(*eptr != NULL && *sptr != NULL);
@@ -745,7 +748,8 @@ void zzlNext(unsigned char *zl, unsigned char **eptr, unsigned char **sptr) {
 }
 
 /* Move to the previous entry based on the values in eptr and sptr. Both are
- * set to NULL when there is no next entry. */
+ * set to NULL when there is no next entry.
+ * 同上，方向变了而已 */
 void zzlPrev(unsigned char *zl, unsigned char **eptr, unsigned char **sptr) {
     unsigned char *_eptr, *_sptr;
     redisAssert(*eptr != NULL && *sptr != NULL);
@@ -764,7 +768,9 @@ void zzlPrev(unsigned char *zl, unsigned char **eptr, unsigned char **sptr) {
 }
 
 /* Returns if there is a part of the zset is in range. Should only be used
- * internally by zzlFirstInRange and zzlLastInRange. */
+ * internally by zzlFirstInRange and zzlLastInRange.
+ * ziplist是否和range有交集？
+ * 这里看的出 score在ziplist中的排序是{head<tail : {score<score2<score<scoreN} */
 int zzlIsInRange(unsigned char *zl, zrangespec *range) {
     unsigned char *p;
     double score;
@@ -940,7 +946,7 @@ unsigned char *zzlLastInLexRange(unsigned char *zl, zlexrangespec *range) {
 
     return NULL;
 }
-
+/* 在ziplist中查找ele对应的score分数 */
 unsigned char *zzlFind(unsigned char *zl, robj *ele, double *score) {
     unsigned char *eptr = ziplistIndex(zl,0), *sptr;
 
@@ -969,12 +975,13 @@ unsigned char *zzlFind(unsigned char *zl, robj *ele, double *score) {
 unsigned char *zzlDelete(unsigned char *zl, unsigned char *eptr) {
     unsigned char *p = eptr;
 
-    /* TODO: add function to ziplist API to delete N elements from offset. */
+    /* TODO: add function to ziplist API to delete N elements from offset. 
+	 * 连续调用2次，即删除了field又删除了score */
     zl = ziplistDelete(zl,&p);
     zl = ziplistDelete(zl,&p);
     return zl;
 }
-
+/* 过一遍，有个印象就好，特别是offset变量的处理和NULL情况的判断 */
 unsigned char *zzlInsertAt(unsigned char *zl, unsigned char *eptr, robj *ele, double score) {
     unsigned char *sptr;
     char scorebuf[128];
@@ -1037,7 +1044,7 @@ unsigned char *zzlInsert(unsigned char *zl, robj *ele, double score) {
     decrRefCount(ele);
     return zl;
 }
-
+/* 删除range内的所有元素{field,score} */
 unsigned char *zzlDeleteRangeByScore(unsigned char *zl, zrangespec *range, unsigned long *deleted) {
     unsigned char *eptr, *sptr;
     double score;
@@ -1066,7 +1073,7 @@ unsigned char *zzlDeleteRangeByScore(unsigned char *zl, zrangespec *range, unsig
     if (deleted != NULL) *deleted = num;
     return zl;
 }
-
+/* 同上，差异不大 */
 unsigned char *zzlDeleteRangeByLex(unsigned char *zl, zlexrangespec *range, unsigned long *deleted) {
     unsigned char *eptr, *sptr;
     unsigned long num = 0;
@@ -1118,14 +1125,14 @@ unsigned int zsetLength(robj *zobj) {
     }
     return length;
 }
-
+/* 其他的数据类型都不允许编码格式之间双向转换，这里既然支持！ */
 void zsetConvert(robj *zobj, int encoding) {
     zset *zs;
     zskiplistNode *node, *next;
     robj *ele;
     double score;
 
-    if (zobj->encoding == encoding) return;
+    if (zobj->encoding == encoding) return;	/* 已经是期望编码，无需转换了 */
     if (zobj->encoding == REDIS_ENCODING_ZIPLIST) {
         unsigned char *zl = zobj->ptr;
         unsigned char *eptr, *sptr;
@@ -1199,7 +1206,8 @@ void zsetConvert(robj *zobj, int encoding) {
  * Sorted set commands
  *----------------------------------------------------------------------------*/
 
-/* This generic command implements both ZADD and ZINCRBY. */
+/* This generic command implements both ZADD and ZINCRBY.
+ * 插入一批{field,score} */
 void zaddGenericCommand(redisClient *c, int incr) {
     static char *nanerr = "resulting score is not a number (NaN)";
     robj *key = c->argv[1];
@@ -1217,7 +1225,8 @@ void zaddGenericCommand(redisClient *c, int incr) {
 
     /* Start parsing all the scores, we need to emit any syntax error
      * before executing additions to the sorted set, as the command should
-     * either execute fully or nothing at all. */
+     * either execute fully or nothing at all. 
+     * 整个命令的执行带有原子性质 */
     scores = zmalloc(sizeof(double)*elements);
     for (j = 0; j < elements; j++) {
         if (getDoubleFromObjectOrReply(c,c->argv[2+j*2],&scores[j],NULL)
@@ -1261,6 +1270,7 @@ void zaddGenericCommand(redisClient *c, int incr) {
 
                 /* Remove and re-insert when score changed. */
                 if (score != curscore) {
+					/* 删除原来的{field,score},填上新的{field,score} */
                     zobj->ptr = zzlDelete(zobj->ptr,eptr);
                     zobj->ptr = zzlInsert(zobj->ptr,ele,score);
                     server.dirty++;
