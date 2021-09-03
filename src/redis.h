@@ -30,6 +30,9 @@
 #ifndef __REDIS_H
 #define __REDIS_H
 
+/* 先包含基础的系统头文件，再包含自定义模块的头文件，
+ * 还是有顺序的哦 */
+
 #include "fmacros.h"
 #include "config.h"
 #include "solarisfixes.h"
@@ -73,7 +76,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_MAX_HZ            500
 #define REDIS_SERVERPORT        6379    /* TCP port */
 #define REDIS_TCP_BACKLOG       511     /* TCP listen backlog */
-#define REDIS_MAXIDLETIME       0       /* default client timeout: infinite */
+#define REDIS_MAXIDLETIME       0       /* default client timeout: infinite(无限的) */
 #define REDIS_DEFAULT_DBNUM     16
 #define REDIS_CONFIGLINE_MAX    1024
 #define REDIS_DBCRON_DBS_PER_CALL 16
@@ -188,10 +191,10 @@ typedef long long mstime_t; /* millisecond time type. */
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
  * is set to one of this fields for this object. */
-#define REDIS_ENCODING_RAW 0     /* Raw representation, 简单动态字符串(sds) */
-#define REDIS_ENCODING_INT 1     /* Encoded as integer val="12"的情况下，直接用int编码val的值 */
-#define REDIS_ENCODING_HT 2      /* Encoded as hash table hash表 */
-#define REDIS_ENCODING_ZIPMAP 3  /* Encoded as zipmap */
+#define REDIS_ENCODING_RAW 0     	/* Raw representation, 简单动态字符串(sds) */
+#define REDIS_ENCODING_INT 1     	/* Encoded as integer val="12"的情况下，直接用int编码val的值 */
+#define REDIS_ENCODING_HT 2      	/* Encoded as hash table hash表 */
+#define REDIS_ENCODING_ZIPMAP 3  	/* Encoded as zipmap */
 #define REDIS_ENCODING_LINKEDLIST 4 /* Encoded as regular linked list 双向列表 */
 #define REDIS_ENCODING_ZIPLIST 5 	/* Encoded as ziplist 压缩的双向列表 */
 #define REDIS_ENCODING_INTSET 6  	/* Encoded as intset intset集合 */
@@ -269,7 +272,8 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_CLIENT_TYPE_PUBSUB 2 /* Clients subscribed to PubSub channels. */
 #define REDIS_CLIENT_TYPE_COUNT 3
 
-/* Slave replication state - from the point of view of the slave. */
+/* Slave replication(复制) state - from the point of view of the slave. 
+ * 状态逐步改变 */
 #define REDIS_REPL_NONE 0 /* No active replication */
 #define REDIS_REPL_CONNECT 1 /* Must connect to master */
 #define REDIS_REPL_CONNECTING 2 /* Connecting to master */
@@ -301,7 +305,7 @@ typedef long long mstime_t; /* millisecond time type. */
 
 /* Log levels */
 #define REDIS_DEBUG 0
-#define REDIS_VERBOSE 1
+#define REDIS_VERBOSE 1		/* 详细的 */
 #define REDIS_NOTICE 2
 #define REDIS_WARNING 3
 #define REDIS_LOG_RAW (1<<10) /* Modifier to log without timestamp */
@@ -319,7 +323,8 @@ typedef long long mstime_t; /* millisecond time type. */
 #define AOF_FSYNC_EVERYSEC 2
 #define REDIS_DEFAULT_AOF_FSYNC AOF_FSYNC_EVERYSEC
 
-/* Zip structure related defaults */
+/* Zip structure related defaults 
+ * 压缩列表被这么多数据类型使用，没想到吧！ */
 #define REDIS_HASH_MAX_ZIPLIST_ENTRIES 512
 #define REDIS_HASH_MAX_ZIPLIST_VALUE 64
 #define REDIS_LIST_MAX_ZIPLIST_ENTRIES 512
@@ -336,7 +341,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_OP_DIFF 1
 #define REDIS_OP_INTER 2
 
-/* Redis maxmemory strategies */
+/* Redis maxmemory strategies EVICTION(驱逐) */
 #define REDIS_MAXMEMORY_VOLATILE_LRU 0
 #define REDIS_MAXMEMORY_VOLATILE_TTL 1
 #define REDIS_MAXMEMORY_VOLATILE_RANDOM 2
@@ -357,7 +362,7 @@ typedef long long mstime_t; /* millisecond time type. */
                                        points are configured. */
 #define REDIS_SHUTDOWN_NOSAVE 2     /* Don't SAVE on SHUTDOWN. */
 
-/* Command call flags, see call() function */
+/* Command call flags, see call() function PROPAGATE(传播) */
 #define REDIS_CALL_NONE 0
 #define REDIS_CALL_SLOWLOG 1
 #define REDIS_CALL_STATS 2
@@ -412,14 +417,14 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_LRU_CLOCK_MAX ((1<<REDIS_LRU_BITS)-1) /* Max value of obj->lru */
 #define REDIS_LRU_CLOCK_RESOLUTION 1000 /* LRU clock resolution in ms */
 
-/* object 核心数据结构
+/* object redis的核心数据结构
  * 一种数据类型(hash)可对应多种可能的编码方式(hash,ziplist)
  * 一种编码方式(hash)可编码多种类型(hash,set) */
 typedef struct redisObject {
 	/* 省内存的典范! */
     unsigned type:4;		
     unsigned encoding:4;
-	 /* lru time (relative to server.lruclock), 单位：秒的低N(REDIS_LRU_BITS-24) bit位 
+	 /* lru time (relative to server.lruclock), 单位：秒，低N(REDIS_LRU_BITS-24) bit位 
 	  * 当前版本仅记录最近的访问时间戳，后续版本还记录了访问次数 */
     unsigned lru:REDIS_LRU_BITS;
 	
@@ -506,7 +511,7 @@ typedef struct blockingState {
 } blockingState;
 
 /* The following structure represents a node in the server.ready_keys list,
- * where we accumulate all the keys that had clients blocked with a blocking
+ * where we accumulate(积累) all the keys that had clients blocked with a blocking
  * operation such as B[LR]POP, but received new data in the context of the
  * last executed command.
  *
@@ -530,7 +535,7 @@ typedef struct redisClient {
     int dictid;
     robj *name;             /* As set by CLIENT SETNAME */
     sds querybuf;
-    size_t querybuf_peak;   /* Recent (100ms or more) peak of querybuf size */
+    size_t querybuf_peak;   /* Recent (100ms or more) peak(顶峰) of querybuf size */
     int argc;
     robj **argv;
     struct redisCommand *cmd, *lastcmd;
@@ -551,7 +556,7 @@ typedef struct redisClient {
     int repldbfd;           /* replication DB file descriptor */
     off_t repldboff;        /* replication DB file offset */
     off_t repldbsize;       /* replication DB file size */
-    sds replpreamble;       /* replication DB preamble. */
+    sds replpreamble;       /* replication DB preamble(前言). */
     long long reploff;      /* replication offset if this is our master */
     long long repl_ack_off; /* replication ack offset, if this is a slave */
     long long repl_ack_time;/* replication ack time, if this is a slave */
