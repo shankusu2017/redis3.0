@@ -2324,7 +2324,7 @@ void closeListeningSockets(int unlink_unix_socket) {
         unlink(server.unixsocket); /* don't care if this fails */
     }
 }
-
+/* 关闭redis */
 int prepareForShutdown(int flags) {
     int save = flags & REDIS_SHUTDOWN_SAVE;
     int nosave = flags & REDIS_SHUTDOWN_NOSAVE;

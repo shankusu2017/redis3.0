@@ -48,7 +48,8 @@ robj *lookupKey(redisDb *db, robj *key) {
 
         /* Update the access time for the ageing algorithm.
          * Don't do it if we have a saving child, as this will trigger
-         * a copy on write madness. */
+         * a copy on write madness. 
+         * 上述考虑点非常nice */
         if (server.rdb_child_pid == -1 && server.aof_child_pid == -1)
             val->lru = LRU_CLOCK();
         return val;
@@ -59,11 +60,11 @@ robj *lookupKey(redisDb *db, robj *key) {
 /* 查找一个key-read的方式 */
 robj *lookupKeyRead(redisDb *db, robj *key) {
     robj *val;
-
-    expireIfNeeded(db,key);
+		
+    expireIfNeeded(db,key);		/* 删除策略：惰性 */
     val = lookupKey(db,key);	/* 若key存在则会更新lru */
-    if (val == NULL)
-        server.stat_keyspace_misses++;
+    if (val == NULL)	
+        server.stat_keyspace_misses++;	/* 更新统计信息，下同 */
     else
         server.stat_keyspace_hits++;
     return val;
@@ -76,7 +77,7 @@ robj *lookupKeyWrite(redisDb *db, robj *key) {
 
 robj *lookupKeyReadOrReply(redisClient *c, robj *key, robj *reply) {
     robj *o = lookupKeyRead(c->db, key);
-    if (!o) addReply(c,reply);
+    if (!o) addReply(c,reply);	/* 找不到对应的key，就返回指定的reply */
     return o;
 }
 
@@ -210,7 +211,7 @@ robj *dbUnshareStringValue(redisDb *db, robj *key, robj *o) {
     }
     return o;
 }
-
+/* 清空整个DB */
 long long emptyDb(void(callback)(void*)) {
     int j;
     long long removed = 0;
