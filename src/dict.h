@@ -46,6 +46,7 @@
 
 typedef struct dictEntry {
     void *key;
+	/* key代表的内容不同，下面的v的type就不同，故而没有再添加一个传统的type字段 */
     union {
         void *val;
         uint64_t u64;

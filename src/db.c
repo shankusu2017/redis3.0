@@ -663,7 +663,7 @@ void shutdownCommand(redisClient *c) {
     if (prepareForShutdown(flags) == REDIS_OK) exit(0);
     addReplyError(c,"Errors trying to SHUTDOWN. Check logs.");
 }
-
+/* 函数实现的逻辑很简单 */
 void renameGenericCommand(redisClient *c, int nx) {
     robj *o;
     long long expire;
@@ -709,7 +709,7 @@ void renameCommand(redisClient *c) {
 void renamenxCommand(redisClient *c) {
     renameGenericCommand(c,1);
 }
-
+/* so easy */
 void moveCommand(redisClient *c) {
     robj *o;
     redisDb *src, *dst;
